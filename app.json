@@ -1,0 +1,58 @@
+{
+  "name": "Advance Telegram File Share Bot by @Shidoteshika1",
+  "description": "file sharing bot store posts and it can access by special links",
+  "keywords": [
+    "telegram",
+    "file",
+    "sharing",
+    "request_fsub"
+  ],
+  "Sorce repository": "https://github.com/CodeXBotz/File-Sharing-Bot",
+  "logo": "https://ibb.co/FgPVtzw",
+  "env": {
+    "TG_BOT_TOKEN": {
+      "description": "Your Bot token, Get it from @Botfather",
+      "value": ""
+    },
+    "OWNER_ID": {
+      "description": "An integer of consisting of your owner ID",
+      "value": "1234567890"
+    },
+    "APP_ID":{
+      "description": "your app id, take it from my.telegram.org",
+      "value": ""
+    },
+    "DATABASE_URL": {
+      "description": "Paste your mongo db url",
+      "value": "url"
+    },
+    "DATABASE_NAME":{
+      "description": "Enter your DATABASE_NAME ",
+      "value": "adrfsxbot"
+    },
+    "API_HASH":{
+      "description": "your api hash, take it from my.telegram.org",
+      "value": ""
+    },
+    "CHANNEL_ID":{
+      "description": "make a channel (database channel), then make the bot as admin in channel, and it's id",
+      "value": "-100"
+    },
+    "SUPPORT_GROUP":{
+      "description": "Support Group is used for normal users to getting help if they don't understand how to use the bot --OPTIONAL--",
+      "value": "https://t.me/support_group"
+    },
+    
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "formation": {
+    "worker": {
+      "quantity": 1,
+      "size": "eco"
+    }
+  }
+}
+
