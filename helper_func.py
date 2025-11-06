@@ -8,10 +8,10 @@ from pyrogram.enums import ChatMemberStatus
 from config import OWNER_ID
 from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant
 from pyrogram.errors import FloodWait
-from database.database import kingdb 
+from database.database import kingdb
 
 #=============================================================================================================================================================================
-# -------------------- HELPER FUNCTIONS FOR USER VERIFICATION IN DIFFERENT CASES -------------------- 
+# -------------------- HELPER FUNCTIONS FOR USER VERIFICATION IN DIFFERENT CASES --------------------
 #=============================================================================================================================================================================
 
 # used for checking banned user
@@ -25,9 +25,11 @@ async def check_banUser(filter, client, update):
 
 
 #used for cheking if a user is admin ~Owner also treated as admin level
-async def check_admin(filter, client, update):
+async def check_admin(filter, client, update, user_id=None):
     try:
-        user_id = update.from_user.id       
+        if user_id:
+            return any([user_id == OWNER_ID, await kingdb.admin_exist(user_id)])
+        user_id = update.from_user.id
         return any([user_id == OWNER_ID, await kingdb.admin_exist(user_id)])
     except Exception as e:
         print(f"! Exception in check_admin: {e}")
@@ -37,7 +39,7 @@ async def check_admin(filter, client, update):
 # Check user subscription in Channels in a more optimized way
 async def is_subscribed(filter, client, update):
     Channel_ids = await kingdb.get_all_channels()
-    
+
     if not Channel_ids:
         return True
 
@@ -64,19 +66,19 @@ async def is_userJoin(client, user_id, channel_id):
     try:
         member = await client.get_chat_member(chat_id=channel_id, user_id=user_id)
         return member.status in {ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER}
-        
+
     except UserNotParticipant:
         if await kingdb.get_request_forcesub(): #and await privateChannel(client, channel_id):
                 return await kingdb.reqSent_user_exist(channel_id, user_id)
-            
+
         return False
-        
+
     except Exception as e:
         print(f"!Error on is_userJoin(): {e}")
         return False
 #=============================================================================================================================================================================
 #=============================================================================================================================================================================
-    
+
 async def encode(string):
     try:
         string_bytes = string.encode("ascii")
@@ -90,7 +92,7 @@ async def decode(base64_string):
     try:
         base64_string = base64_string.strip("=") # links generated before this commit will be having = sign, hence striping them to handle padding errors.
         base64_bytes = (base64_string + "=" * (-len(base64_string) % 4)).encode("ascii")
-        string_bytes = base64.urlsafe_b64decode(base64_bytes) 
+        string_bytes = base64.urlsafe_b64decode(base64_bytes)
         string = string_bytes.decode("ascii")
         return string
     except Exception as e:
@@ -171,7 +173,7 @@ def get_readable_time(seconds: int) -> str:
 #Check user subscription in Channels
 """async def is_subscribed(filter, client, update):
     Channel_ids = await kingdb.get_all_channels()
-    
+
     if not Channel_ids:
         return True
 
@@ -179,15 +181,15 @@ def get_readable_time(seconds: int) -> str:
 
     if any([user_id == OWNER_ID, await kingdb.admin_exist(user_id)]):
         return True
-        
+
     member_status = ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER
-    
+
     REQFSUB = await kingdb.get_request_forcesub()
-                    
+
     for id in Channel_ids:
         if not id:
             continue
-            
+
         try:
             member = await client.get_chat_member(chat_id=id, user_id=user_id)
         except UserNotParticipant:
@@ -197,7 +199,7 @@ def get_readable_time(seconds: int) -> str:
                     return False
             else:
                 return False
-                
+
         if member:
             if member.status not in member_status:
                 if REQFSUB and await privateChannel(client, id):
@@ -211,7 +213,7 @@ def get_readable_time(seconds: int) -> str:
 #Check user subscription in Channels in More Simpler way
 """async def is_subscribed(filter, client, update):
     Channel_ids = await kingdb.get_all_channels()
-    
+
     if not Channel_ids:
         return True
 
@@ -223,10 +225,10 @@ def get_readable_time(seconds: int) -> str:
     for ids in Channel_ids:
         if not ids:
             continue
-            
+
         if not await is_userJoin(client, user_id, ids):
             return False
-            
+
     return True"""
 #----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
