@@ -7,11 +7,43 @@ from pyrogram.errors import FloodWait
 from bot import Bot
 from config import CHANNEL_ID
 from helper_func import encode, is_admin
-command_list = ['start', 'users', 'broadcast', 'batch', 'genlink', 'help', 'cmd', 'info', 'add_fsub', 'fsub_chnl', 'restart', 'del_fsub', 'add_admins', 'del_admins', 'admin_list', 'cancel', 'auto_del', 'forcesub', 'files', 'add_banuser', 'del_banuser', 'banuser_list', 'status', 'req_fsub']
+
+
+command_list = [
+    'start',
+    'users',
+    'broadcast',
+    'batch',
+    'genlink',
+    'help',
+    'cmd',
+    'info',
+    'add_fsub',
+    'fsub_chnl',
+    'restart',
+    'del_fsub',
+    'add_admins',
+    'del_admins',
+    'admin_list',
+    'cancel',
+    'auto_del',
+    'forcesub',
+    'files',
+    'add_banuser',
+    'del_banuser',
+    'banuser_list',
+    'status',
+    'req_fsub',
+    'addpremium',
+    'removepremium',
+    'checkpremium',
+    'listpremium',
+    'mypremium'
+]
 
 @Bot.on_message(~filters.command(command_list) & filters.private & is_admin)
 async def channel_post(client: Client, message: Message):
-        
+
     reply_text = await message.reply_text("<b><i>Pʀᴏᴄᴇssɪɴɢ....</i></b>", quote=True)
     try:
         post_message = await message.copy(chat_id=client.db_channel.id, disable_notification=True)
