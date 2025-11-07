@@ -38,7 +38,8 @@ command_list = [
     'removepremium',
     'checkpremium',
     'listpremium',
-    'mypremium'
+    'mypremium',
+    'shortner'
 ]
 
 @Bot.on_message(~filters.command(command_list) & filters.private & is_admin)
