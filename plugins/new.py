@@ -12,16 +12,13 @@ async def hshort(client, message):
 
 
 
-
-@Client.on_callback_query()
 async def global_callback_handler(client, callback_query):
     data = callback_query.data
-    if data.startswith("short_") and data != "short_rem":
-        await short2(client, callback_query)
-
-    elif data == "short_rem":
-        await short3(client, callback_query)
-
+    if data.startswith("short_"):
+        if data != "short_rem":
+            await short2(client, callback_query)
+        else:
+            await short3(client, callback_query)
     elif data.startswith("mode_"):
         await short4(client, callback_query)
 
