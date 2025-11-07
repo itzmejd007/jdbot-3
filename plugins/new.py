@@ -11,7 +11,7 @@ async def hshort(client, message):
     await short(client, message)
 
 
-
+@Client.on_callback_query()
 async def global_callback_handler(client, callback_query):
     data = callback_query.data
     if data.startswith("short_"):
