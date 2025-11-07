@@ -12,6 +12,7 @@ from datetime import datetime
 
 from config import API_HASH, APP_ID, LOGGER, TG_BOT_TOKEN, TG_BOT_WORKERS, CHANNEL_ID, PORT, OWNER_ID
 
+
 class Bot(Client):
     def __init__(self):
         super().__init__(
@@ -32,7 +33,7 @@ class Bot(Client):
         self.name = bot_info.first_name
         self.username = bot_info.username
         self.uptime = datetime.now()
-                
+
         try:
             db_channel = await self.get_chat(CHANNEL_ID)
 
@@ -40,10 +41,10 @@ class Bot(Client):
                 db_channel.invite_link = await self.export_chat_invite_link(CHANNEL_ID)
 
             self.db_channel = db_channel
-            
+
             test = await self.send_message(chat_id = db_channel.id, text = "Testing")
             await test.delete()
-            
+
         except Exception as e:
             self.LOGGER(__name__).warning(e)
             self.LOGGER(__name__).warning(f"Make Sure bot is Admin in DB Channel and have proper Permissions, So Double check the CHANNEL_ID Value, Current Value {CHANNEL_ID}")
@@ -62,7 +63,9 @@ class Bot(Client):
 
         try: await self.send_message(OWNER_ID, text = f"<b><blockquote>🤖 Bᴏᴛ Rᴇsᴛᴀʀᴛᴇᴅ ♻️</blockquote></b>")
         except: pass
-
+        from plugins.prem import premium_expiry_monitor
+        asyncio.create_task(premium_expiry_monitor())
+        
     async def stop(self, *args):
         await super().stop()
         self.LOGGER(__name__).info(f"{self.name} Bot stopped.")

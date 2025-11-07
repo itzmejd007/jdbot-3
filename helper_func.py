@@ -2,6 +2,9 @@
 
 import base64
 import re
+import string
+import random
+from shortzy import Shortzy
 import asyncio
 from pyrogram import filters
 from pyrogram.enums import ChatMemberStatus
@@ -232,6 +235,19 @@ def get_readable_time(seconds: int) -> str:
     return True"""
 #----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+
+async def get_shortlink(link):
+    url = await get_variable("website")
+    if url.startswith("https://"):
+        url = url.replace("https://", "", 1)
+    api = await get_variable("api")
+    shortzy = Shortzy(api_key=api, base_site=url)
+    link = await shortzy.convert(link)
+    return link
+
+def generate_hash(length=18):
+    characters = string.hexdigits.lower()
+    return "".join(random.choices(characters, k=length))
 
 subscribed = filters.create(is_subscribed)
 is_admin = filters.create(check_admin)

@@ -1,15 +1,16 @@
 # --- For-Bot-Working --------- #
-pyrogram 
-TgCrypto 
+pyrogram
+TgCrypto
 pyromod==1.5
 
 # --- For-Database ------------ #
-pymongo 
-dnspython 
+pymongo
+dnspython
 motor  # Async driver for MongoDB
+shortzy
 
 # --- For-Web-Response ------- #
-aiohttp 
+aiohttp
 
 # --- Advance-Format --- #
 pyrofork
