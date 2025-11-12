@@ -3,6 +3,7 @@ from pyrogram.enums import ParseMode
 from pyrogram.types import Message
 
 from argon.prem import short, short2, short3, short4
+from plugins.prem import prem
 
 
 
@@ -21,6 +22,8 @@ async def global_callback_handler(client, callback_query):
             await short3(client, callback_query)
     elif data.startswith("mode_"):
         await short4(client, callback_query)
+    elif data.startswith("prem"):
+        await prem(client, callback_query)
 
     else:
         callback_query.continue_propagation()
