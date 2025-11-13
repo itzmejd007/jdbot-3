@@ -24,7 +24,7 @@ OWNER_ID = int(os.environ.get("OWNER_ID", "1357978966"))
 SUPPORT_GROUP = os.environ.get("SUPPORT_GROUP", "")
 
 #Port
-PORT = os.environ.get("PORT", "9090")
+PORT = os.environ.get("PORT", "9099")
 
 #Database --⚠️ REQUIRED--
 DB_URI = os.environ.get("DATABASE_URL", "mongodb+srv://jddhanush85:jayaraman143@cluster0.cmj1w.mongodb.net/?retryWrites=true&w=majority")
