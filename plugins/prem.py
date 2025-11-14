@@ -626,7 +626,7 @@ async def prem(client, query):
 
 @Bot.on_message(filters.command('log') & filters.private)
 async def send_logs(client, message):
-    log_file = "bot.txt"
+    log_file = "logs.txt"
 
     if os.path.exists(log_file):
         with open(log_file, "rb") as f:
