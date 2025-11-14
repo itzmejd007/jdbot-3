@@ -627,9 +627,15 @@ async def prem(client, query):
 @Client.on_message(filters.command('log') & filters.private)
 async def send_logs(client, message):
     log_file = "logs.txt"
-
-    if os.path.exists(log_file):
-        with open(log_file, "rb") as f:
-            await message.reply_document(f, caption="📄 Here are the latest logs.")
-    else:
-        await message.reply_text("⚠️ No logs found.")
+    try:
+        log_file = LOGGER.LOG_FILE_NAME
+        if os.path.exists(log_file):
+            with open(log_file, "rb") as f:
+                await message.reply_document(f, caption="📄 Here are the latest logs.")
+        if os.path.exists("logs.txt"):
+            with open(log_file, "rb") as f:
+                await message.reply_document(f, caption="📄 Here are the latest logs.")
+        else:
+            await message.reply_text("⚠️ No logs found.")
+    except Exception as e:
+        await message.reply_text(f"❌ Failed to send logs: {e}")
