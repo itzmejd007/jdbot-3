@@ -7,6 +7,7 @@ import sys
 from argon.prem import short, short2, short3, short4
 from plugins.prem import prem
 from helper_func import is_admin
+from config import LOGGER
 
 
 
@@ -50,3 +51,19 @@ async def restart(client, message):
         os.execv(sys.executable, ["python3", "main.py"])
     except Exception as e:
         print(f"ERROR:-{str(e)}")
+
+@Client.on_message(filters.private & filters.command("log") & is_admin)
+async def send_logs(client, message):
+    log_file = "logs.txt"
+    try:
+        log_file = LOGGER.LOG_FILE_NAME
+        if os.path.exists(log_file):
+            with open(log_file, "rb") as f:
+                await message.reply_document(f, caption="📄 Here are the latest logs.")
+        if os.path.exists("logs.txt"):
+            with open(log_file, "rb") as f:
+                await message.reply_document(f, caption="📄 Here are the latest logs.")
+        else:
+            await message.reply_text("⚠️ No logs found.")
+    except Exception as e:
+        await message.reply_text(f"❌ Failed to send logs: {e}")
