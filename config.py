@@ -39,7 +39,7 @@ PICS = (os.environ.get("PICS", "https://telegra.ph/file/5094c60f1122bbae9b3d9.jp
 #set your Custom Caption here, Keep None for Disable Custom Caption
 CUSTOM_CAPTION = os.environ.get("CUSTOM_CAPTION", None)
 
-LOG_FILE_NAME = "bot.txt"
+LOG_FILE_NAME = "logs.txt"
 
 logging.basicConfig(
     level=logging.INFO,
