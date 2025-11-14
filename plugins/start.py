@@ -625,7 +625,7 @@ async def not_joined(client: Client, message: Message):
 #......... RESTART COMMAND FOR RESTARTING BOT .......#
 #=====================================================================================##
 
-@Bot.on_message(filters.command('restart') & filters.private & filters.user(OWNER_ID))
+
 async def restart_bot(client: Client, message: Message):
     print("Restarting bot...")
     msg = await message.reply(text=f"<b><i><blockquote>⚠️ {client.name} ɢᴏɪɴɢ ᴛᴏ Rᴇsᴛᴀʀᴛ...</blockquote></i></b>")

@@ -1,9 +1,12 @@
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 from pyrogram.types import Message
+import os
+import sys
 
 from argon.prem import short, short2, short3, short4
 from plugins.prem import prem
+from helper_func import is_admin
 
 
 
@@ -27,3 +30,23 @@ async def global_callback_handler(client, callback_query):
 
     else:
         callback_query.continue_propagation()
+
+@Client.on_message(filters.private & filters.command("restart") & is_admin)
+async def restart(client, message):
+    await message.reply_text(
+        "🔄 <b>Rᴇsᴛᴀʀᴛɪɴɢ ʙᴏᴛ....</b>",
+        parse_mode=ParseMode.HTML,
+    )
+
+    try:
+        exit_code = os.system("python3 update.py")
+
+        if exit_code == 0:
+            await message.reply_text("✅ Update successful! Restarting bot...")
+        else:
+            await message.reply_text("⚠️ Update failed! Restarting bot anyway...")
+
+        # Restart the bot process
+        os.execv(sys.executable, ["python3", "main.py"])
+    except Exception as e:
+        print(f"ERROR:-{str(e)}")
