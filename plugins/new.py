@@ -55,6 +55,7 @@ async def restart(client, message):
 @Client.on_message(filters.private & filters.command("log") & is_admin)
 async def send_logs(client, message):
     log_file = "logs.txt"
+    await message.reply_text("hi")
     try:
         log_file = LOGGER.LOG_FILE_NAME
         if os.path.exists(log_file):
