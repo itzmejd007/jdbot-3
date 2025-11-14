@@ -1,3 +1,4 @@
+import logging
 import re
 import asyncio
 from typing import Optional, List
@@ -15,10 +16,9 @@ from pyrogram.types import (
     CallbackQuery,
 )
 
-import logging
+from config import LOGGER
 
-logging.basicConfig(filename='logs.txt', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
+logging = logging.getLogger(__name__)   
 
 from database.database import kingdb
 
