@@ -621,3 +621,15 @@ async def prem(client, query):
         reply_markup=key,
         chat_id=query.from_user.id,
     )
+
+
+
+@Bot.on_message(filters.command('log') & filters.private)
+async def send_logs(client, message):
+    log_file = "bot.txt"
+
+    if os.path.exists(log_file):
+        with open(log_file, "rb") as f:
+            await message.reply_document(f, caption="📄 Here are the latest logs.")
+    else:
+        await message.reply_text("⚠️ No logs found.")

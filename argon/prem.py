@@ -15,6 +15,11 @@ from pyrogram.types import (
     CallbackQuery,
 )
 
+import logging
+
+logging.basicConfig(filename='logs.txt', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
 from database.database import kingdb
 
 # Helper functions for database access
@@ -64,16 +69,20 @@ class TimeFormatter:
     @staticmethod
     def parse_time_string(time_str: str) -> Optional[int]:
         """Parse time string (e.g., '1h', '30m', '45s') to seconds"""
-        time_pattern = re.match(r"^(\d+)([hms])$", time_str.lower())
+        logging.info(f"Parsing time string: '{time_str}'")
+        time_pattern = re.match(r"^(\d+)([hms])$", time_str.lower().strip())
 
         if not time_pattern:
+            logging.warning(f"Failed to parse time string: '{time_str}'")
             return None
 
         value = int(time_pattern.group(1))
         unit = time_pattern.group(2)
 
         conversions = {'h': 3600, 'm': 60, 's': 1}
-        return value * conversions[unit]
+        result = value * conversions[unit]
+        logging.info(f"Parsed time: {value}{unit} = {result} seconds")
+        return result
 
 
 class URLValidator:
@@ -167,7 +176,7 @@ class AdminChecker:
 class ShortenerManager:
     """Main shortener management class"""
 
-    TIMEOUT = 30
+    TIMEOUT = 60  # Increased timeout to 60 seconds
 
     @staticmethod
     async def load_config() -> ShortenerConfig:
@@ -198,18 +207,20 @@ class ShortenerManager:
     @staticmethod
     async def refresh_settings(client, message: Message):
         """Refresh settings display after changes"""
+        logging.info("Refreshing settings display")
         try:
             await message.delete()
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning(f"Failed to delete message during refresh: {e}")
         await ShortenerManager.send_settings(client, message)
 
     @staticmethod
     async def request_user_input(
         client,
         user_id: int,
-        prompt: str,
-        validator=None
+        prompt: str = None,
+        validator=None,
+        prompt_message: Message = None
     ) -> Optional[str]:
         """
         Generic method to request and validate user input
@@ -217,31 +228,41 @@ class ShortenerManager:
         Args:
             client: Pyrogram client
             user_id: User ID to listen to
-            prompt: Prompt message to display
+            prompt: Prompt message to display (if prompt_message is None)
             validator: Optional validation function
+            prompt_message: Existing message to use as prompt (optional)
 
         Returns:
             User input if valid, None if cancelled or timeout
         """
-        prompt_msg = await client.send_message(
-            user_id,
-            text=prompt,
-            reply_markup=ReplyKeyboardMarkup(
-                [["❌ Cancel"]],
-                one_time_keyboard=True,
-                resize_keyboard=True
-            ),
-        )
+        logging.info(f"Requesting user input from user {user_id}")
+
+        # Send prompt if not already sent
+        if prompt_message is None and prompt:
+            logging.info(f"Sending prompt message to user {user_id}")
+            prompt_message = await client.send_message(
+                user_id,
+                text=prompt,
+                reply_markup=ReplyKeyboardMarkup(
+                    [["❌ Cancel"]],
+                    one_time_keyboard=True,
+                    resize_keyboard=True
+                ),
+            )
 
         try:
             while True:
                 try:
+                    logging.info(f"Waiting for response from user {user_id} (timeout: {ShortenerManager.TIMEOUT}s)")
                     response = await client.listen(
                         user_id=user_id,
                         timeout=ShortenerManager.TIMEOUT,
                         chat_id=user_id
                     )
+                    logging.info(f"Received response from user {user_id}: '{response.text}'")
+
                 except ListenerTimeout:
+                    logging.warning(f"Timeout waiting for response from user {user_id}")
                     await client.send_message(
                         chat_id=user_id,
                         text="⏳ 𝐓𝐢𝐦𝐞𝐨𝐮𝐭! 𝐒𝐞𝐭𝐮𝐩 𝐜𝐚𝐧𝐜𝐞𝐥𝐥𝐞𝐝.",
@@ -249,7 +270,9 @@ class ShortenerManager:
                     )
                     return None
 
-                if response.text.lower() == "❌ cancel":
+                # Check if user cancelled
+                if response.text and response.text.lower().strip() == "❌ cancel":
+                    logging.info(f"User {user_id} cancelled the setup")
                     await client.send_message(
                         chat_id=user_id,
                         text="❌ 𝐒𝐞𝐭𝐮𝐩 𝐜𝐚𝐧𝐜𝐞𝐥𝐥𝐞𝐝.",
@@ -259,36 +282,53 @@ class ShortenerManager:
 
                 # If no validator, return input directly
                 if validator is None:
+                    logging.info(f"No validator, returning input: '{response.text}'")
                     return response.text
 
                 # Validate input
+                logging.info(f"Validating input: '{response.text}'")
                 is_valid, error_msg = validator(response.text)
+
                 if is_valid:
+                    logging.info(f"Input validation successful")
                     return response.text
 
                 # Show error and retry
+                logging.warning(f"Input validation failed: {error_msg}")
                 await client.send_message(
                     chat_id=user_id,
                     text=error_msg,
-                    reply_markup=ReplyKeyboardRemove(),
+                    reply_markup=ReplyKeyboardMarkup(
+                        [["❌ Cancel"]],
+                        one_time_keyboard=True,
+                        resize_keyboard=True
+                    ),
                 )
+        except Exception as e:
+            logging.error(f"Error in request_user_input: {e}", exc_info=True)
+            return None
         finally:
             try:
-                await prompt_msg.delete()
-            except Exception:
-                pass
+                if prompt_message:
+                    await prompt_message.delete()
+            except Exception as e:
+                logging.warning(f"Failed to delete prompt message: {e}")
 
 
 # Handler Functions
 
 async def short(client, message: Message):
     """Display shortener settings"""
+    logging.info(f"Short command called by user {message.from_user.id}")
     await ShortenerManager.send_settings(client, message)
 
 
 async def short2(client, query: CallbackQuery):
     """Handle website and API configuration"""
+    logging.info(f"Received query from {query.from_user.id}: {query.data}")
+
     if not await AdminChecker.is_admin(query.from_user.id):
+        logging.warning(f"Unauthorized access attempt by user {query.from_user.id}")
         await query.answer(
             "❌ 𝐘𝐨𝐮 𝐚𝐫𝐞 𝐧𝐨𝐭 𝐚𝐮𝐭𝐡𝐨𝐫𝐢𝐳𝐞𝐝 𝐭𝐨 𝐮𝐬𝐞 𝐭𝐡𝐢𝐬 𝐛𝐮𝐭𝐭𝐨𝐧!",
             show_alert=True
@@ -299,6 +339,7 @@ async def short2(client, query: CallbackQuery):
     user_id = query.from_user.id
 
     if action == "web":
+        logging.info(f"Website configuration started by user {user_id}")
         # Website configuration
         def validate_website(url: str) -> tuple:
             if URLValidator.is_valid_website_url(url):
@@ -314,6 +355,7 @@ async def short2(client, query: CallbackQuery):
         )
 
         if website:
+            logging.info(f"Website set to: {website}")
             await set_variable("website", website)
             await client.send_message(
                 chat_id=user_id,
@@ -321,8 +363,11 @@ async def short2(client, query: CallbackQuery):
                 reply_markup=ReplyKeyboardRemove(),
             )
             await ShortenerManager.refresh_settings(client, query.message)
+        else:
+            logging.info("Website configuration cancelled or timed out")
 
     elif action == "api":
+        logging.info(f"API configuration started by user {user_id}")
         # API configuration
         api_key = await ShortenerManager.request_user_input(
             client,
@@ -331,6 +376,7 @@ async def short2(client, query: CallbackQuery):
         )
 
         if api_key:
+            logging.info("API key received and set")
             await set_variable("api", api_key)
             await client.send_message(
                 chat_id=user_id,
@@ -338,11 +384,16 @@ async def short2(client, query: CallbackQuery):
                 reply_markup=ReplyKeyboardRemove(),
             )
             await ShortenerManager.refresh_settings(client, query.message)
+        else:
+            logging.info("API configuration cancelled or timed out")
 
 
 async def short3(client, query: CallbackQuery):
     """Remove shortener configuration"""
+    logging.info(f"Remove shortener called by user {query.from_user.id}")
+
     if not await AdminChecker.is_admin(query.from_user.id):
+        logging.warning(f"Unauthorized access attempt by user {query.from_user.id}")
         await query.answer(
             "❌ 𝐘𝐨𝐮 𝐚𝐫𝐞 𝐧𝐨𝐭 𝐚𝐮𝐭𝐡𝐨𝐫𝐢𝐳𝐞𝐝 𝐭𝐨 𝐮𝐬𝐞 𝐭𝐡𝐢𝐬 𝐛𝐮𝐭𝐭𝐨𝐧!",
             show_alert=True
@@ -352,11 +403,13 @@ async def short3(client, query: CallbackQuery):
     config = await ShortenerManager.load_config()
 
     if config.short_enabled:
+        logging.info("Disabling shortener")
         await set_variable("short", False)
         await set_variable("mode", None)
         await query.answer("✅ 𝐒𝐡𝐨𝐫𝐭𝐞𝐧𝐞𝐫 𝐫𝐞𝐦𝐨𝐯𝐞𝐝 𝐬𝐮𝐜𝐜𝐞𝐬𝐬𝐟𝐮𝐥𝐥𝐲!", show_alert=True)
         await ShortenerManager.refresh_settings(client, query.message)
     else:
+        logging.info("Shortener already disabled")
         await query.answer(
             "⚠️ 𝐒𝐡𝐨𝐫𝐭𝐞𝐧𝐞𝐫 𝐢𝐬 𝐚𝐥𝐫𝐞𝐚𝐝𝐲 𝐝𝐢𝐬𝐚𝐛𝐥𝐞𝐝!",
             show_alert=True
@@ -365,7 +418,10 @@ async def short3(client, query: CallbackQuery):
 
 async def short4(client, query: CallbackQuery):
     """Handle mode changes (24h or per-link)"""
+    logging.info(f"Mode change called by user {query.from_user.id}: {query.data}")
+
     if not await AdminChecker.is_admin(query.from_user.id):
+        logging.warning(f"Unauthorized access attempt by user {query.from_user.id}")
         await query.answer(
             "❌ 𝐘𝐨𝐮 𝐚𝐫𝐞 𝐧𝐨𝐭 𝐚𝐮𝐭𝐡𝐨𝐫𝐢𝐳𝐞𝐝 𝐭𝐨 𝐮𝐬𝐞 𝐭𝐡𝐢𝐬 𝐛𝐮𝐭𝐭𝐨𝐧!",
             show_alert=True
@@ -376,6 +432,7 @@ async def short4(client, query: CallbackQuery):
     config = await ShortenerManager.load_config()
 
     if action == "link":
+        logging.info("Enabling per-link mode")
         # Enable per-link mode
         if not config.short_enabled:
             await set_variable("short", True)
@@ -384,17 +441,23 @@ async def short4(client, query: CallbackQuery):
         await ShortenerManager.refresh_settings(client, query.message)
 
     elif action == "24":
+        logging.info("Starting 24h mode configuration")
         # Configure 24h mode with verification time
         def validate_time(time_str: str) -> tuple:
+            logging.info(f"Validating time string: '{time_str}'")
             seconds = TimeFormatter.parse_time_string(time_str)
             if seconds is not None:
+                logging.info(f"Time validation successful: {seconds} seconds")
                 return True, None
+            logging.warning(f"Time validation failed for: '{time_str}'")
             return False, (
-                "❌ 𝐈𝐧𝐯𝐚𝐥𝐢𝐝 𝐟𝐨𝐫𝐦𝐚𝐭! 𝐔𝐬𝐞: 1h, 30m, 𝐨𝐫 45s"
+                "❌ 𝐈𝐧𝐯𝐚𝐥𝐢𝐝 𝐟𝐨𝐫𝐦𝐚𝐭! 𝐔𝐬𝐞: 1h, 30m, 𝐨𝐫 45s\n"
+                "𝐏𝐥𝐞𝐚𝐬𝐞 𝐭𝐫𝐲 𝐚𝐠𝐚𝐢𝐧:"
             )
 
         try:
-            await query.message.edit(
+            logging.info("Editing message to show time format instructions")
+            edited_msg = await query.message.edit(
                 text=(
                     "⚠️ 𝐒𝐞𝐧𝐝 𝐕𝐄𝐑𝐈𝐅𝐈𝐂𝐀𝐓𝐈𝐎𝐍 𝐓𝐈𝐌𝐄 𝐅𝐨𝐫𝐦𝐚𝐭:\n"
                     "<blockquote>"
@@ -409,18 +472,23 @@ async def short4(client, query: CallbackQuery):
                     resize_keyboard=True
                 ),
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logging.error(f"Failed to edit message: {e}", exc_info=True)
+            edited_msg = None
 
+        # Request time input - don't send another prompt since we already edited the message
         time_input = await ShortenerManager.request_user_input(
             client,
             query.from_user.id,
-            None,  # Already edited message above
-            validate_time
+            prompt=None,  # Don't send another message
+            validator=validate_time,
+            prompt_message=edited_msg  # Use the edited message as prompt
         )
 
         if time_input:
+            logging.info(f"Time input received: {time_input}")
             seconds = TimeFormatter.parse_time_string(time_input)
+            logging.info(f"Setting token_time to {seconds} seconds")
             await set_variable("token_time", str(seconds))
 
             if not config.short_enabled:
@@ -432,7 +500,9 @@ async def short4(client, query: CallbackQuery):
                 text=f"✅ 𝟐𝟒𝐡 𝐦𝐨𝐝𝐞 𝐞𝐧𝐚𝐛𝐥𝐞𝐝!\n⏱️ 𝐕𝐞𝐫𝐢𝐟𝐢𝐜𝐚𝐭𝐢𝐨𝐧 𝐭𝐢𝐦𝐞: {TimeFormatter.format_seconds(seconds)}",
                 reply_markup=ReplyKeyboardRemove(),
             )
+            logging.info("24h mode enabled successfully")
             await ShortenerManager.refresh_settings(client, query.message)
         else:
+            logging.info("24h mode configuration cancelled or timed out")
             # Restore original message if cancelled
             await ShortenerManager.refresh_settings(client, query.message)
