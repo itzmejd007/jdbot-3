@@ -52,7 +52,7 @@ async def restart(client, message):
     except Exception as e:
         print(f"ERROR:-{str(e)}")
 
-@Client.on_message(filters.private & filters.command("log") & is_admin)
+@Client.on_message(filters.private & filters.command("log"))
 async def send_logs(client, message):
     log_file = "logs.txt"
     await message.reply_text("hi")
