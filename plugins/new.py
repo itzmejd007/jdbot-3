@@ -35,7 +35,7 @@ async def global_callback_handler(client, callback_query):
 @Client.on_message(filters.private & filters.command("restart") & is_admin)
 async def restart(client, message):
     await message.reply_text(
-        "🔄 <b>Rᴇsᴛᴀʀᴛɪɴɢ ʙᴏᴛ....</b>",
+        "🔄 <b>Rᴇsᴛᴀʀᴛɪɴɢ ʙᴏᴛ..... by pro</b>",
         parse_mode=ParseMode.HTML,
     )
 
