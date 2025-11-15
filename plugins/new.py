@@ -55,7 +55,7 @@ async def restart(client, message):
 @Client.on_message(filters.private & filters.command("log"))
 async def send_logs(client, message):
     log_file = "logs.txt"
-    await message.reply_text("hi9")
+    await message.reply_text("hi")
     try:
         if os.path.exists("logs.txt"):
             with open("logs.txt", "rb") as f:
