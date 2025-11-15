@@ -4,7 +4,7 @@ from subprocess import run
 UPSTREAM_BRANCH = os.environ.get("UPSTREAM_BRANCH", "main")
 UPSTREAM_REPO = os.environ.get(
     "UPSTREAM_REPO",
-    "git clone https://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@github.com/itzmejd007/jdbot-3.git",
+    "https://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@github.com/itzmejd007/jdbot-3.git",
 )
 
 
