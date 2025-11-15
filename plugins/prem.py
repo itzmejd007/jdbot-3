@@ -116,7 +116,7 @@ class PremiumManager:
     async def get_all_premium_users() -> list:
         """Get list of all premium users"""
         try:
-            all_users = await kingdb.get_all_users()
+            all_users = await kingdb.full_userbase()
             premium_users = []
 
             for user_id in all_users:
@@ -544,7 +544,7 @@ async def premium_expiry_monitor():
         try:
             await asyncio.sleep(60)  # Check every 1 minute
 
-            all_users = await kingdb.get_all_users()
+            all_users = await kingdb.full_userbase()
             expired_count = 0
 
             for user_id in all_users:
