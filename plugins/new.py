@@ -62,7 +62,7 @@ async def send_logs(client, message):
             with open(log_file, "rb") as f:
                 await message.reply_document(f, caption="📄 Here are the latest logs.")
         if os.path.exists("logs.txt"):
-            with open(log_file, "rb") as f:
+            with open("logs.txt", "rb") as f:
                 await message.reply_document(f, caption="📄 Here are the latest logs.")
         else:
             await message.reply_text("⚠️ No logs found.")
