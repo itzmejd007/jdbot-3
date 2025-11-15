@@ -255,7 +255,6 @@ class ShortenerManager:
                 try:
                     logging.info(f"Waiting for response from user {user_id} (timeout: {ShortenerManager.TIMEOUT}s)")
                     response = await client.listen(
-                        user_id=user_id,
                         timeout=ShortenerManager.TIMEOUT,
                         chat_id=user_id
                     )
