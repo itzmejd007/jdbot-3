@@ -568,7 +568,7 @@ async def list_premium_command(client: Client, message: Message):
         list_msg, keyboard = PremiumMessageBuilder.build_list_message(premium_users)
         await message.reply_text(list_msg, reply_markup=keyboard)
     except Exception as e:
-        logger.error(e)
+        await message.reply_text(e)
 
 
 @Client.on_message(filters.command('mypremium') & filters.private)
