@@ -250,7 +250,7 @@ class PremiumManager:
             logging.info("started")
             all_users = await kingdb.full_userbase()
             premium_users = []
-            logg
+        
 
             for user_id in all_users:
                 status = await PremiumManager.check_premium(user_id)
