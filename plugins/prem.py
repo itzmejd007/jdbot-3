@@ -259,7 +259,7 @@ class PremiumManager:
                         "user_id": user_id,
                         **status
                     })
-            logging.info(premium_users)
+            logging.info(f"premium_users:- {premium_users}")
             return premium_users
         except Exception as e:
             logging.error(f"Error fetching premium users: {e}")
