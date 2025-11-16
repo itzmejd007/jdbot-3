@@ -419,7 +419,7 @@ class PremiumMessageBuilder:
             return (
                 "<blockquote expandable>📋 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙐𝙨𝙚𝙧𝙨 𝙇𝙞𝙨𝙩</blockquote>\n\n"
                 "ℹ️ <i>No premium users found</i>",
-                None
+                InlineKeyboardMarkup([[InlineKeyboardButton("❌ Close", callback_data="close")]])
             )
 
         total_users = len(premium_users)
@@ -457,8 +457,14 @@ class PremiumMessageBuilder:
         if nav_buttons:
             buttons.append(nav_buttons)
 
-        buttons.append([InlineKeyboardButton("🔄 Refresh", callback_data=f"prem_list_{page}")])
-        buttons.append([InlineKeyboardButton("❌ Close", callback_data="close")])
+        buttons.append([
+            InlineKeyboardButton("🔄 Refresh", callback_data=f"refresh_list_{page}"),
+            InlineKeyboardButton("📊 Stats", callback_data="refresh_stats")
+        ])
+        buttons.append([
+            InlineKeyboardButton("📤 Export", callback_data="export_premium"),
+            InlineKeyboardButton("❌ Close", callback_data="close")
+        ])
 
         return message, InlineKeyboardMarkup(buttons)
 
@@ -746,7 +752,9 @@ async def premium_stats_command(client: Client, message: Message):
         
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("📋 View Full List", callback_data="prem_list_1")],
-            [InlineKeyboardButton("🔄 Refresh", callback_data="prem_stats")],
+            [InlineKeyboardButton("📜 View History", callback_data="refresh_history")],
+            [InlineKeyboardButton("🔄 Refresh", callback_data="refresh_stats")],
+            [InlineKeyboardButton("📤 Export", callback_data="export_premium")],
             [InlineKeyboardButton("❌ Close", callback_data="close")]
         ])
         
@@ -837,27 +845,8 @@ async def premium_stats_callback(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex('^prem$'))
 async def premium_info_callback(client: Client, query: CallbackQuery):
-    """Handle premium info button"""
-
-    status = await PremiumManager.check_premium(query.from_user.id)
-
-    if status.get("is_premium"):
-        time_left = PremiumManager.format_time_remaining(
-            status["days_left"],
-            status["hours_left"]
-        )
-        expiry = status["expiry_date"].strftime('%d %b %Y')
-
-        await query.answer(
-            f"✅ Premium Active!\n⏳ {time_left} remaining (until {expiry})",
-            show_alert=True
-        )
-    else:
-        await query.answer(
-            "💎 Contact admin to get premium access!\n\n"
-            "Benefits: No ads, Direct links, Priority support",
-            show_alert=True
-        )
+    """Handle premium purchase info - redirects to purchase page"""
+    await prem(client, query)
 
 
 @Client.on_callback_query(filters.regex('^close$'))
@@ -1284,7 +1273,9 @@ async def search_premium_command(client: Client, message: Message):
         return await message.reply_text(
             "<blockquote expandable>ℹ️ 𝙎𝙚𝙖𝙧𝙘𝙝 𝙋𝙧𝙚𝙢𝙞𝙪𝙢</blockquote>\n\n"
             "<b>Usage:</b>\n"
-            "<code>/searchpremium user_id</code>"
+            "<code>/searchpremium user_id</code>\n\n"
+            "<b>Example:</b>\n"
+            "<code>/searchpremium 123456789</code>"
         )
     
     try:
@@ -1298,21 +1289,23 @@ async def search_premium_command(client: Client, message: Message):
         if status.get("is_premium"):
             keyboard = InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton("🔄 Extend", callback_data=f"extend_{user_id}"),
+                    InlineKeyboardButton("🔄 Extend", callback_data=f"extend_menu_{user_id}"),
                     InlineKeyboardButton("🗑️ Remove", callback_data=f"confirm_remove_{user_id}")
                 ],
+                [InlineKeyboardButton("🔄 Refresh", callback_data=f"search_premium_{user_id}")],
                 [InlineKeyboardButton("❌ Close", callback_data="close")]
             ])
         else:
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("➕ Add Premium", callback_data=f"add_{user_id}")],
+                [InlineKeyboardButton("➕ Add Premium", callback_data=f"add_menu_{user_id}")],
+                [InlineKeyboardButton("🔄 Refresh", callback_data=f"search_premium_{user_id}")],
                 [InlineKeyboardButton("❌ Close", callback_data="close")]
             ])
         
         await message.reply_text(status_msg, reply_markup=keyboard)
         
     except ValueError:
-        await message.reply_text("❌ Invalid user ID!")
+        await message.reply_text("❌ Invalid user ID! User ID must be a number.")
 
 
 # ==================== Premium History ====================
@@ -1336,7 +1329,10 @@ async def premium_history_command(client: Client, message: Message):
         premium_users = await PremiumManager.get_all_premium_users()
         
         if not premium_users:
-            return await message.reply_text("ℹ️ No premium history available")
+            return await message.reply_text(
+                "<blockquote expandable>📜 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙃𝙞𝙨𝙩𝙤𝙧𝙮</blockquote>\n\n"
+                "ℹ️ <i>No premium history available</i>"
+            )
         
         # Sort by added date (most recent first)
         sorted_users = sorted(
@@ -1362,7 +1358,9 @@ async def premium_history_command(client: Client, message: Message):
             )
         
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📊 View Stats", callback_data="prem_stats")],
+            [InlineKeyboardButton("📊 View Stats", callback_data="refresh_stats")],
+            [InlineKeyboardButton("📋 View List", callback_data="prem_list_1")],
+            [InlineKeyboardButton("🔄 Refresh", callback_data="refresh_history")],
             [InlineKeyboardButton("❌ Close", callback_data="close")]
         ])
         
@@ -1374,6 +1372,227 @@ async def premium_history_command(client: Client, message: Message):
 
 
 # ==================== Advanced Callback Handlers ====================
+
+@Client.on_callback_query(filters.regex(r'^search_premium_(\d+)$'))
+async def search_premium_callback(client: Client, query: CallbackQuery):
+    """Handle search premium refresh"""
+    
+    if not await is_admin(0, 0, query.from_user.id):
+        return await query.answer("⛔ Only admins can view this!", show_alert=True)
+    
+    user_id = int(query.data.split('_')[-1])
+    
+    try:
+        status = await PremiumManager.check_premium(user_id)
+        status_msg = PremiumMessageBuilder.build_status_message(user_id, status)
+        
+        # Build action keyboard
+        if status.get("is_premium"):
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("🔄 Extend", callback_data=f"extend_menu_{user_id}"),
+                    InlineKeyboardButton("🗑️ Remove", callback_data=f"confirm_remove_{user_id}")
+                ],
+                [InlineKeyboardButton("🔄 Refresh", callback_data=f"search_premium_{user_id}")],
+                [InlineKeyboardButton("❌ Close", callback_data="close")]
+            ])
+        else:
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("➕ Add Premium", callback_data=f"add_menu_{user_id}")],
+                [InlineKeyboardButton("🔄 Refresh", callback_data=f"search_premium_{user_id}")],
+                [InlineKeyboardButton("❌ Close", callback_data="close")]
+            ])
+        
+        await query.edit_message_text(status_msg, reply_markup=keyboard)
+        await query.answer("Refreshed! ✅")
+        
+    except Exception as e:
+        await query.answer(f"Error: {str(e)}", show_alert=True)
+
+
+@Client.on_callback_query(filters.regex(r'^extend_menu_(\d+)$'))
+async def extend_menu_callback(client: Client, query: CallbackQuery):
+    """Show extend duration options"""
+    
+    if not await is_admin(0, 0, query.from_user.id):
+        return await query.answer("⛔ Only admins can do this!", show_alert=True)
+    
+    user_id = int(query.data.split('_')[-1])
+    
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("7 Days", callback_data=f"extend_{user_id}_7d"),
+            InlineKeyboardButton("15 Days", callback_data=f"extend_{user_id}_15d")
+        ],
+        [
+            InlineKeyboardButton("1 Month", callback_data=f"extend_{user_id}_1mo"),
+            InlineKeyboardButton("3 Months", callback_data=f"extend_{user_id}_3mo")
+        ],
+        [
+            InlineKeyboardButton("6 Months", callback_data=f"extend_{user_id}_6mo"),
+            InlineKeyboardButton("1 Year", callback_data=f"extend_{user_id}_1y")
+        ],
+        [InlineKeyboardButton("◀️ Back", callback_data=f"search_premium_{user_id}")]
+    ])
+    
+    await query.edit_message_text(
+        f"<b>🔄 Extend Premium</b>\n\n"
+        f"👤 <b>User ID:</b> <code>{user_id}</code>\n\n"
+        f"<b>Select duration to extend:</b>",
+        reply_markup=keyboard
+    )
+
+
+@Client.on_callback_query(filters.regex(r'^extend_(\d+)_(.+)$'))
+async def extend_premium_callback(client: Client, query: CallbackQuery):
+    """Actually extend premium"""
+    
+    if not await is_admin(0, 0, query.from_user.id):
+        return await query.answer("⛔ Only admins can do this!", show_alert=True)
+    
+    parts = query.data.split('_')
+    user_id = int(parts[1])
+    duration_input = parts[2]
+    
+    try:
+        # Parse duration
+        duration_seconds = parse_duration(duration_input)
+        if not duration_seconds:
+            return await query.answer("Invalid duration!", show_alert=True)
+        
+        # Get premium set and extend
+        premium_set = await PremiumManager._get_premium_set()
+        user_key = str(user_id)
+        
+        if user_key not in premium_set:
+            return await query.answer("User doesn't have premium!", show_alert=True)
+        
+        current_expiry = datetime.fromisoformat(premium_set[user_key]["expiry"])
+        new_expiry = current_expiry + timedelta(seconds=duration_seconds)
+        
+        # Update expiry
+        premium_set[user_key]["expiry"] = new_expiry.isoformat()
+        premium_set[user_key]["duration_seconds"] += duration_seconds
+        
+        await PremiumManager._save_premium_set(premium_set)
+        
+        duration_display = format_duration_display(duration_seconds)
+        
+        await query.edit_message_text(
+            f"<blockquote expandable>✅ 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙀𝙭𝙩𝙚𝙣𝙙𝙚𝙙</blockquote>\n\n"
+            f"👤 <b>User ID:</b> <code>{user_id}</code>\n"
+            f"➕ <b>Added:</b> <code>{duration_display}</code>\n"
+            f"📅 <b>New Expiry:</b> <code>{new_expiry.strftime('%d %b %Y, %I:%M %p')}</code>\n\n"
+            f"✨ <i>Premium extended successfully!</i>"
+        )
+        
+        # Notify user
+        try:
+            await client.send_message(
+                chat_id=user_id,
+                text=(
+                    f"<blockquote expandable>🎉 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙀𝙭𝙩𝙚𝙣𝙙𝙚𝙙</blockquote>\n\n"
+                    f"Your premium has been extended by <b>{duration_display}</b>!\n\n"
+                    f"📅 <b>New Expiry:</b> <code>{new_expiry.strftime('%d %b %Y, %I:%M %p')}</code>\n\n"
+                    f"✨ <i>Continue enjoying premium benefits!</i> 🎊"
+                )
+            )
+        except:
+            pass
+        
+        await query.answer("Premium extended! ✅")
+        
+    except Exception as e:
+        logging.error(f"Extend error: {e}")
+        await query.answer(f"Error: {str(e)}", show_alert=True)
+
+
+@Client.on_callback_query(filters.regex(r'^add_menu_(\d+)$'))
+async def add_menu_callback(client: Client, query: CallbackQuery):
+    """Show add premium duration options"""
+    
+    if not await is_admin(0, 0, query.from_user.id):
+        return await query.answer("⛔ Only admins can do this!", show_alert=True)
+    
+    user_id = int(query.data.split('_')[-1])
+    
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("7 Days", callback_data=f"add_{user_id}_7d"),
+            InlineKeyboardButton("15 Days", callback_data=f"add_{user_id}_15d")
+        ],
+        [
+            InlineKeyboardButton("1 Month", callback_data=f"add_{user_id}_1mo"),
+            InlineKeyboardButton("3 Months", callback_data=f"add_{user_id}_3mo")
+        ],
+        [
+            InlineKeyboardButton("6 Months", callback_data=f"add_{user_id}_6mo"),
+            InlineKeyboardButton("1 Year", callback_data=f"add_{user_id}_1y")
+        ],
+        [InlineKeyboardButton("◀️ Back", callback_data=f"search_premium_{user_id}")]
+    ])
+    
+    await query.edit_message_text(
+        f"<b>➕ Add Premium</b>\n\n"
+        f"👤 <b>User ID:</b> <code>{user_id}</code>\n\n"
+        f"<b>Select duration:</b>",
+        reply_markup=keyboard
+    )
+
+
+@Client.on_callback_query(filters.regex(r'^add_(\d+)_(.+)$'))
+async def add_premium_callback(client: Client, query: CallbackQuery):
+    """Actually add premium via callback"""
+    
+    if not await is_admin(0, 0, query.from_user.id):
+        return await query.answer("⛔ Only admins can do this!", show_alert=True)
+    
+    parts = query.data.split('_')
+    user_id = int(parts[1])
+    duration_input = parts[2]
+    
+    try:
+        # Parse duration
+        duration_seconds = parse_duration(duration_input)
+        if not duration_seconds:
+            return await query.answer("Invalid duration!", show_alert=True)
+        
+        # Add premium
+        result = await PremiumManager.add_premium(user_id, duration_seconds, query.from_user.id)
+        
+        if result["success"]:
+            duration_display = format_duration_display(duration_seconds)
+            
+            await query.edit_message_text(
+                PremiumMessageBuilder.build_add_success_message(
+                    user_id,
+                    result["expiry_date"],
+                    duration_display
+                )
+            )
+            
+            # Notify user
+            try:
+                await client.send_message(
+                    chat_id=user_id,
+                    text=(
+                        f"<blockquote expandable>🎉 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝘼𝙘𝙩𝙞𝙫𝙖𝙩𝙚𝙙</blockquote>\n\n"
+                        f"💎 You've been granted <b>{duration_display}</b> of premium access!\n\n"
+                        f"📅 <b>Valid Until:</b> <code>{result['expiry_date'].strftime('%d %b %Y, %I:%M %p')}</code>\n\n"
+                        f"✨ <i>Enjoy your premium experience!</i> 🎊"
+                    )
+                )
+            except:
+                pass
+            
+            await query.answer("Premium added! ✅")
+        else:
+            await query.answer(result["message"], show_alert=True)
+            
+    except Exception as e:
+        logging.error(f"Add premium error: {e}")
+        await query.answer(f"Error: {str(e)}", show_alert=True)
+
 
 @Client.on_callback_query(filters.regex(r'^confirm_remove_(\d+)$'))
 async def confirm_remove_callback(client: Client, query: CallbackQuery):
@@ -1387,7 +1606,7 @@ async def confirm_remove_callback(client: Client, query: CallbackQuery):
     keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton("✅ Yes, Remove", callback_data=f"remove_{user_id}"),
-            InlineKeyboardButton("❌ Cancel", callback_data="close")
+            InlineKeyboardButton("❌ Cancel", callback_data=f"search_premium_{user_id}")
         ]
     ])
     
@@ -1431,6 +1650,188 @@ async def remove_premium_callback(client: Client, query: CallbackQuery):
         await query.answer("Premium removed successfully! ✅")
     else:
         await query.answer(result["message"], show_alert=True)
+
+
+@Client.on_callback_query(filters.regex(r'^refresh_list_(\d+)$'))
+async def refresh_list_callback(client: Client, query: CallbackQuery):
+    """Refresh premium list"""
+    
+    if not await is_admin(0, 0, query.from_user.id):
+        return await query.answer("⛔ Only admins can view this!", show_alert=True)
+    
+    page = int(query.data.split('_')[-1])
+    
+    try:
+        premium_users = await PremiumManager.get_all_premium_users()
+        list_msg, keyboard = PremiumMessageBuilder.build_list_message(premium_users, page)
+        
+        await query.edit_message_text(list_msg, reply_markup=keyboard)
+        await query.answer("List refreshed! ✅")
+        
+    except Exception as e:
+        await query.answer(f"Error: {str(e)}", show_alert=True)
+
+
+@Client.on_callback_query(filters.regex(r'^refresh_stats$'))
+async def refresh_stats_callback(client: Client, query: CallbackQuery):
+    """Refresh premium stats"""
+    
+    if not await is_admin(0, 0, query.from_user.id):
+        return await query.answer("⛔ Only admins can view this!", show_alert=True)
+    
+    try:
+        premium_users = await PremiumManager.get_all_premium_users()
+        total_count = len(premium_users)
+        
+        if total_count == 0:
+            stats_text = (
+                "<blockquote expandable>📊 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙎𝙩𝙖𝙩𝙞𝙨𝙩𝙞𝙘𝙨</blockquote>\n\n"
+                "ℹ️ <i>No premium users currently</i>"
+            )
+        else:
+            expiring_soon = sum(1 for user in premium_users if user["days_left"] <= 7)
+            expiring_today = sum(1 for user in premium_users if user["days_left"] == 0)
+            
+            stats_text = (
+                f"<blockquote expandable>📊 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙎𝙩𝙖𝙩𝙞𝙨𝙩𝙞𝙘𝙨</blockquote>\n\n"
+                f"👥 <b>Total Premium Users:</b> <code>{total_count}</code>\n"
+                f"⚠️ <b>Expiring in 7 Days:</b> <code>{expiring_soon}</code>\n"
+                f"🔴 <b>Expiring Today:</b> <code>{expiring_today}</code>\n\n"
+            )
+            
+            sorted_users = sorted(premium_users, key=lambda x: x["days_left"], reverse=True)[:5]
+            
+            if sorted_users:
+                stats_text += "<b>🏆 Top Premium Users:</b>\n\n"
+                for idx, user in enumerate(sorted_users, 1):
+                    time_left = PremiumManager.format_time_remaining(user["days_left"], user["hours_left"])
+                    stats_text += f"<b>{idx}.</b> <code>{user['user_id']}</code> - <i>{time_left}</i>\n"
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📋 View Full List", callback_data="prem_list_1")],
+            [InlineKeyboardButton("🔄 Refresh", callback_data="refresh_stats")],
+            [InlineKeyboardButton("❌ Close", callback_data="close")]
+        ])
+        
+        await query.edit_message_text(stats_text, reply_markup=keyboard)
+        await query.answer("Stats refreshed! ✅")
+        
+    except Exception as e:
+        await query.answer(f"Error: {str(e)}", show_alert=True)
+
+
+@Client.on_callback_query(filters.regex(r'^refresh_history$'))
+async def refresh_history_callback(client: Client, query: CallbackQuery):
+    """Refresh premium history"""
+    
+    if not await is_admin(0, 0, query.from_user.id):
+        return await query.answer("⛔ Only admins can view this!", show_alert=True)
+    
+    try:
+        premium_users = await PremiumManager.get_all_premium_users()
+        
+        if not premium_users:
+            history_text = (
+                f"<blockquote expandable>📜 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙃𝙞𝙨𝙩𝙤𝙧𝙮</blockquote>\n\n"
+                "ℹ️ <i>No premium history available</i>"
+            )
+        else:
+            sorted_users = sorted(
+                premium_users,
+                key=lambda x: datetime.fromisoformat(x["added_at"]),
+                reverse=True
+            )[:20]
+            
+            history_text = (
+                f"<blockquote expandable>📜 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙃𝙞𝙨𝙩𝙤𝙧𝙮</blockquote>\n\n"
+                f"<b>Recent Additions (Last 20):</b>\n\n"
+            )
+            
+            for idx, user in enumerate(sorted_users, 1):
+                added_at = datetime.fromisoformat(user["added_at"]).strftime('%d %b %y, %I:%M %p')
+                duration = format_duration_display(user["duration_seconds"])
+                
+                history_text += (
+                    f"<b>{idx}.</b> 👤 <code>{user['user_id']}</code>\n"
+                    f"   📅 {added_at}\n"
+                    f"   ⏰ {duration}\n"
+                    f"   👨‍💼 By: <code>{user['added_by']}</code>\n\n"
+                )
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📊 View Stats", callback_data="refresh_stats")],
+            [InlineKeyboardButton("🔄 Refresh", callback_data="refresh_history")],
+            [InlineKeyboardButton("❌ Close", callback_data="close")]
+        ])
+        
+        await query.edit_message_text(history_text, reply_markup=keyboard)
+        await query.answer("History refreshed! ✅")
+        
+    except Exception as e:
+        await query.answer(f"Error: {str(e)}", show_alert=True)
+
+
+@Client.on_callback_query(filters.regex(r'^export_premium$'))
+async def export_premium_callback(client: Client, query: CallbackQuery):
+    """Export premium data via callback"""
+    
+    if not await is_admin(0, 0, query.from_user.id):
+        return await query.answer("⛔ Only admins can do this!", show_alert=True)
+    
+    await query.answer("Generating export file... ⏳")
+    
+    try:
+        premium_users = await PremiumManager.get_all_premium_users()
+        
+        if not premium_users:
+            return await query.answer("No premium users to export!", show_alert=True)
+        
+        # Create export text
+        export_text = "=" * 50 + "\n"
+        export_text += "PREMIUM USERS EXPORT\n"
+        export_text += f"Generated: {datetime.now().strftime('%d %b %Y, %I:%M %p')}\n"
+        export_text += f"Total Users: {len(premium_users)}\n"
+        export_text += "=" * 50 + "\n\n"
+        
+        for idx, user in enumerate(premium_users, 1):
+            time_left = PremiumManager.format_time_remaining(user["days_left"], user["hours_left"])
+            expiry = user["expiry_date"].strftime('%d %b %Y, %I:%M %p')
+            added_at = datetime.fromisoformat(user["added_at"]).strftime('%d %b %Y, %I:%M %p')
+            duration = format_duration_display(user["duration_seconds"])
+            
+            export_text += f"{idx}. USER ID: {user['user_id']}\n"
+            export_text += f"   Time Left: {time_left}\n"
+            export_text += f"   Expires: {expiry}\n"
+            export_text += f"   Added: {added_at}\n"
+            export_text += f"   Added By: {user['added_by']}\n"
+            export_text += f"   Duration: {duration}\n"
+            export_text += "-" * 50 + "\n\n"
+        
+        # Save to file
+        filename = f"premium_users_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(export_text)
+        
+        # Send file
+        await client.send_document(
+            chat_id=query.from_user.id,
+            document=filename,
+            caption=(
+                f"<b>📊 Premium Users Export</b>\n\n"
+                f"👥 Total: <code>{len(premium_users)}</code>\n"
+                f"📅 Generated: <code>{datetime.now().strftime('%d %b %Y, %I:%M %p')}</code>"
+            )
+        )
+        
+        # Delete file
+        import os
+        os.remove(filename)
+        
+        await query.answer("Export sent! ✅")
+        
+    except Exception as e:
+        logging.error(f"Export error: {e}")
+        await query.answer(f"Export failed: {str(e)}", show_alert=True)
 
 
 # ==================== Help Command ====================
