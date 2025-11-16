@@ -380,7 +380,7 @@ class PremiumMessageBuilder:
 
 # ==================== Command Handlers ====================
 
-@Bot.on_message(filters.command(['addpremium', 'addprem']) & filters.private)
+@Client.on_message(filters.command(['addpremium', 'addprem']) & filters.private)
 async def add_premium_command(client: Client, message: Message):
     """Add premium access to a user"""
     await message.reply_chat_action(ChatAction.TYPING)
@@ -457,7 +457,7 @@ async def add_premium_command(client: Client, message: Message):
         )
 
 
-@Bot.on_message(filters.command(['removepremium', 'remprem', 'delprem']) & filters.private)
+@Client.on_message(filters.command(['removepremium', 'remprem', 'delprem']) & filters.private)
 async def remove_premium_command(client: Client, message: Message):
     """Remove premium access from a user"""
     await message.reply_chat_action(ChatAction.TYPING)
@@ -514,7 +514,7 @@ async def remove_premium_command(client: Client, message: Message):
         )
 
 
-@Bot.on_message(filters.command(['checkpremium', 'premstatus']) & filters.private)
+@Client.on_message(filters.command(['checkpremium', 'premstatus']) & filters.private)
 async def check_premium_command(client: Client, message: Message):
     """Check premium status of a user"""
     await message.reply_chat_action(ChatAction.TYPING)
@@ -548,7 +548,7 @@ async def check_premium_command(client: Client, message: Message):
     await message.reply_text(status_msg)
 
 
-@Bot.on_message(filters.command(['listpremium', 'premlist', 'premiumusers']) & filters.private)
+@Client.on_message(filters.command(['listpremium', 'premlist', 'premiumusers']) & filters.private)
 async def list_premium_command(client: Client, message: Message):
     """List all premium users"""
     await message.reply_chat_action(ChatAction.TYPING)
@@ -570,7 +570,7 @@ async def list_premium_command(client: Client, message: Message):
         logger.error(e)
 
 
-@Bot.on_message(filters.command('mypremium') & filters.private)
+@Client.on_message(filters.command('mypremium') & filters.private)
 async def my_premium_command(client: Client, message: Message):
     """Check own premium status"""
     await message.reply_chat_action(ChatAction.TYPING)
@@ -615,7 +615,7 @@ async def my_premium_command(client: Client, message: Message):
 
 # ==================== Callback Query Handlers ====================
 
-@Bot.on_callback_query(filters.regex(r'^prem_list_(\d+)$'))
+@Client.on_callback_query(filters.regex(r'^prem_list_(\d+)$'))
 async def premium_list_pagination(client: Client, query: CallbackQuery):
     """Handle premium list pagination"""
 
@@ -637,7 +637,7 @@ async def premium_list_pagination(client: Client, query: CallbackQuery):
         await query.answer("Already on this page!", show_alert=False)
 
 
-@Bot.on_callback_query(filters.regex('^prem$'))
+@Client.on_callback_query(filters.regex('^prem$'))
 async def premium_info_callback(client: Client, query: CallbackQuery):
     """Handle premium info button"""
 
