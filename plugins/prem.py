@@ -557,13 +557,15 @@ async def list_premium_command(client: Client, message: Message):
             "<blockquote expandable>⛔ 𝘼𝙘𝙘𝙚𝙨𝙨 𝘿𝙚𝙣𝙞𝙚𝙙</blockquote>\n\n"
             "❌ <i>Only admins can view premium users list</i>"
         )
-
-    # Get all premium users
-    premium_users = await PremiumManager.get_all_premium_users()
-
-    # Build and send list
-    list_msg, keyboard = PremiumMessageBuilder.build_list_message(premium_users)
-    await message.reply_text(list_msg, reply_markup=keyboard)
+    try:
+        # Get all premium users
+        premium_users = await PremiumManager.get_all_premium_users()
+    
+        # Build and send list
+        list_msg, keyboard = PremiumMessageBuilder.build_list_message(premium_users)
+        await message.reply_text(list_msg, reply_markup=keyboard)
+    except Exception as e:
+        logger.error(e)
 
 
 @Bot.on_message(filters.command('mypremium') & filters.private)
