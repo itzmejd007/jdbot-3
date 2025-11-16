@@ -733,7 +733,6 @@ QR_IMG_LINK = "https://i.ibb.co/5xtpFb2T/f4faad6ca1c1.jpg"
 
 
 async def prem(client, query):
-    log.info("function works")
     text = "🌟 <b>Premium Access</b> 🌟<b>\n</b><blockquote expandable><b><i>🔥 Elevate your experience with Premium Access! 🔥</i></b></blockquote>\n\n<b>💸 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs:\n➥ ₹40 - </b>1 ᴍᴏɴᴛʜ ᴀᴄᴄᴇss<b>\n➥ ₹199 - </b>6 ᴍᴏɴᴛʜ ᴀᴄᴄᴇss<b>\n➥ ₹399 - </b>1 ʏᴇᴀʀ ᴀᴄᴄᴇss\n\n<blockquote expandable>🛍 <b>ʜᴏᴡ ᴛᴏ ᴘᴜʀᴄʜᴀsᴇ ᴘʀᴇᴍɪᴜᴍ -</b>\n\n💫 <b>sᴄᴀɴ</b> ᴛʜᴇ ǫʀ ᴄᴏᴅᴇ Ꭺʙᴏvᴇ.\n💫 <b>sᴇɴᴅ</b> ᴛʜᴇ ᴄᴏʀʀᴇᴄᴛ ᴀᴍᴏᴜɴᴛ ᴀᴄᴄᴏʀᴅɪɴɢ ᴛᴏ ᴛʜᴇ ᴘʟᴀɴ ʏᴏᴜ ᴡᴀɴᴛ.\n💫 <b>ʀᴇᴘᴏʀᴛ</b> ʏᴏᴜʀ ᴘᴀʏᴍᴇɴᴛ sᴄʀᴇᴇɴsʜᴏᴛ ᴛᴏ ᴛʜᴇ ᴏᴡɴᴇʀ ᴜsɪɴɢ ᴛʜᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ!                                              \n</blockquote>📨 𝚄𝙿𝙸 𝙸𝙳: upi@upi \n\n<blockquote expandable>🎉 <i>Premium Benefits:\n🔅Unlimited Access\n🔅 No Ads\n🔅 Faster Experience\n🔅 Priority Support</i>                                            </blockquote>\n\n<b>⚠️ </b>ɪᴍᴘᴏʀᴛᴀɴᴛ ɴᴏᴛᴇ ⚠️:\n📌 <i>Send the correct amount as per the plan.\n📌 No refunds once the transaction is make.</i>\n\n<blockquote expandable><b><i>🙌 Success starts when you invest in yourself. Unlock the best with Premium.</i></b></blockquote>"
     key = InlineKeyboardMarkup(
         [
