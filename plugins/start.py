@@ -431,11 +431,18 @@ async def process_file_request(client: Client, message: Message, user_id: int, a
 
     # Fetch messages
     await message.reply_chat_action(ChatAction.UPLOAD_DOCUMENT)
-
     try:
         messages = await get_messages(client, ids)
     except Exception as e:
+        logging.exception("get_messages() raised an exception")
         return await message.reply_text("<b><i>Sᴏᴍᴇᴛʜɪɴɢ ᴡᴇɴᴛ ᴡʀᴏɴɢ..!</i></b>")
+
+    # Defensive: ensure messages is iterable/list
+    if not messages:
+        # Log the useful debug info so you can locate why get_messages returned nothing
+        logging.error("process_file_request: get_messages returned None or empty. user_id=%s ids=%s db_channel=%s",
+                      user_id, ids, getattr(client, "db_channel", None))
+        return await message.reply_text("❌ <b>File(s) not found or inaccessible.</b>")
 
     # Get settings from database
     AUTO_DEL, DEL_TIMER, HIDE_CAPTION, CHNL_BTN, PROTECT_MODE = await asyncio.gather(
