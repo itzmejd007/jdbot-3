@@ -249,7 +249,6 @@ class PremiumManager:
         try:
             logging.info("started")
             all_users = await kingdb.full_userbase()
-            logging.info(all_users)
             premium_users = []
         
 
@@ -335,6 +334,7 @@ class PremiumMessageBuilder:
     @staticmethod
     def build_list_message(premium_users: list, page: int = 1, per_page: int = 10) -> tuple:
         """Build premium users list message with pagination"""
+        logging.info(f"premium_users = {premium_users}")
         if not premium_users:
             return (
                 "<blockquote expandable>📋 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙐𝙨𝙚𝙧𝙨 𝙇𝙞𝙨𝙩</blockquote>\n\n"
