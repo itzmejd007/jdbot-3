@@ -1,12 +1,14 @@
 import asyncio
 from datetime import datetime, timedelta
 from bot import Bot
-from config import OWNER_ID
+from config import OWNER_ID, LOGGER
 from database.database import kingdb
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.enums import ParseMode, ChatAction
 from helper_func import is_admin
+
+logger=LOGGER(__name__)
 
 # ==================== Helper Classes ====================
 async def send_premium_tutorial(message: Message, error: str = None) -> None:
