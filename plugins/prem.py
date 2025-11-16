@@ -258,7 +258,7 @@ class PremiumManager:
 
             return premium_users
         except Exception as e:
-            print(f"Error fetching premium users: {e}")
+            logger.error(f"Error fetching premium users: {e}")
             return []
 
     @staticmethod
