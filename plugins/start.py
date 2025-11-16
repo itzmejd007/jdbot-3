@@ -169,19 +169,68 @@ class FileRequestHandler:
 
     @staticmethod
     def parse_message_ids(argument: list, db_channel_id: int, link_mode: bool = False) -> list:
-        """Parse message IDs from arguments"""
-        try:
-            # Determine indices based on mode
-            start_idx = 2 if link_mode else 1
-            end_idx = 3 if link_mode else 2
+        """
+        Parse message IDs from arguments.
 
-            # Check if we have range or single ID
-            if len(argument) > end_idx:
-                start = int(int(argument[start_idx]) / abs(db_channel_id))
-                end = int(int(argument[end_idx]) / abs(db_channel_id))
-                return list(range(start, end + 1)) if start <= end else list(range(start, end - 1, -1))
-            elif len(argument) > start_idx:
-                return [int(int(argument[start_idx]) / abs(db_channel_id))]
+        Supports payloads like:
+         - ["get", "<msgid>"]
+         - ["get", "<start>", "<end>"]
+         - ["set", "<channel_id>", "<msgid>"]
+         - ["set", "<channel_id>", "<start>", "<end>"]
+         - ["<anything>", "<msgid>"] (fallback)
+
+        Returns list of message ids or None on failure.
+        """
+        try:
+            # Normalize tokens to strings
+            tokens = [str(x) for x in argument]
+
+            # Helper to parse single int
+            def to_int(x):
+                return int(x)
+
+            # Case 1: explicit "set" with channel id included
+            if tokens and tokens[0].lower() == "set":
+                # Expect at least: set, channel_id, msgid
+                if len(tokens) >= 3:
+                    ch = int(tokens[1])
+                    if len(tokens) >= 4:
+                        start = to_int(tokens[2])
+                        end = to_int(tokens[3])
+                        return list(range(start, end + 1)) if start <= end else list(range(start, end - 1, -1))
+                    else:
+                        return [to_int(tokens[2])]
+                return None
+
+            # Case 2: explicit "get" (or other) with msgid(s)
+            if tokens and tokens[0].lower() == "get":
+                if len(tokens) >= 3:
+                    start = to_int(tokens[1])
+                    end = to_int(tokens[2])
+                    return list(range(start, end + 1)) if start <= end else list(range(start, end - 1, -1))
+                elif len(tokens) >= 2:
+                    return [to_int(tokens[1])]
+                return None
+
+            # Case 3: fallback when link_mode is True and payload may embed ids at later indices
+            if link_mode:
+                # try to find any integer tokens in the list and interpret them
+                ints = []
+                for t in tokens:
+                    try:
+                        ints.append(int(t))
+                    except Exception:
+                        continue
+                if not ints:
+                    return None
+                if len(ints) == 1:
+                    return [ints[0]]
+                return list(range(ints[0], ints[1] + 1)) if ints[0] <= ints[1] else list(range(ints[0], ints[1] - 1, -1))
+
+            # Non-link_mode old behaviour: argument expected like ["<whatever>", "<msgid>"]
+            if len(tokens) >= 2:
+                return [to_int(tokens[1])]
+
         except (ValueError, IndexError, ZeroDivisionError):
             pass
 
@@ -283,7 +332,7 @@ async def send_welcome_message(client: Client, message: Message):
     ]
     
     # Add premium status button
-    else:
+    if not is_premium:
         buttons.append([InlineKeyboardButton('💎 Gᴇᴛ Pʀᴇᴍɪᴜᴍ', callback_data='prem')])
     
     reply_markup = InlineKeyboardMarkup(buttons)
