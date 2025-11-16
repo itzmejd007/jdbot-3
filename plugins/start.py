@@ -177,44 +177,37 @@ class FileRequestHandler:
          - ["get", "<start>", "<end>"]
          - ["set", "<channel_id>", "<msgid>"]
          - ["set", "<channel_id>", "<start>", "<end>"]
-         - ["<anything>", "<msgid>"] (fallback)
-
+         - fallback: find any integers in tokens
         Returns list of message ids or None on failure.
         """
         try:
-            # Normalize tokens to strings
-            tokens = [str(x) for x in argument]
+            tokens = [str(x) for x in (argument or [])]
 
-            # Helper to parse single int
             def to_int(x):
                 return int(x)
 
-            # Case 1: explicit "set" with channel id included
+            # Case: explicit "set" (set, channel, msgid[,end])
             if tokens and tokens[0].lower() == "set":
-                # Expect at least: set, channel_id, msgid
+                if len(tokens) >= 4:
+                    start = to_int(tokens[2])
+                    end = to_int(tokens[3])
+                    return list(range(start, end + 1)) if start <= end else list(range(start, end - 1, -1))
                 if len(tokens) >= 3:
-                    ch = int(tokens[1])
-                    if len(tokens) >= 4:
-                        start = to_int(tokens[2])
-                        end = to_int(tokens[3])
-                        return list(range(start, end + 1)) if start <= end else list(range(start, end - 1, -1))
-                    else:
-                        return [to_int(tokens[2])]
+                    return [to_int(tokens[2])]
                 return None
 
-            # Case 2: explicit "get" (or other) with msgid(s)
+            # Case: explicit "get" (get, msgid[,end])
             if tokens and tokens[0].lower() == "get":
                 if len(tokens) >= 3:
                     start = to_int(tokens[1])
                     end = to_int(tokens[2])
                     return list(range(start, end + 1)) if start <= end else list(range(start, end - 1, -1))
-                elif len(tokens) >= 2:
+                if len(tokens) >= 2:
                     return [to_int(tokens[1])]
                 return None
 
-            # Case 3: fallback when link_mode is True and payload may embed ids at later indices
+            # If link_mode, try to extract any integers from tokens
             if link_mode:
-                # try to find any integer tokens in the list and interpret them
                 ints = []
                 for t in tokens:
                     try:
@@ -227,7 +220,7 @@ class FileRequestHandler:
                     return [ints[0]]
                 return list(range(ints[0], ints[1] + 1)) if ints[0] <= ints[1] else list(range(ints[0], ints[1] - 1, -1))
 
-            # Non-link_mode old behaviour: argument expected like ["<whatever>", "<msgid>"]
+            # Fallback: common case where argument is like ["something", "<msgid>"]
             if len(tokens) >= 2:
                 return [to_int(tokens[1])]
 
