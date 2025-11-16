@@ -283,8 +283,6 @@ async def send_welcome_message(client: Client, message: Message):
     ]
     
     # Add premium status button
-    if is_premium:
-        buttons.append([InlineKeyboardButton('💎 Pʀᴇᴍɪᴜᴍ Sᴛᴀᴛᴜs', callback_data='my_premium_status')])
     else:
         buttons.append([InlineKeyboardButton('💎 Gᴇᴛ Pʀᴇᴍɪᴜᴍ', callback_data='prem')])
     
