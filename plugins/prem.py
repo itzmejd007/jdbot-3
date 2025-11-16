@@ -939,7 +939,7 @@ def start_premium_monitors():
 
 # ==================== Premium Purchase Handler ====================
 
-QR_IMG_LINK = "https://i.ibb.co/5xtpFb2T/f4faad6ca1c1.jpg"
+QR_IMG_LINK = "https://commercial-amethyst-wcs1oyy4pv.edgeone.app/IMG_20251116_131738.jpg"
 
 
 async def prem(client, query):
