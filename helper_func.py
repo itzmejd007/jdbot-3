@@ -13,6 +13,14 @@ from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant
 from pyrogram.errors import FloodWait
 from database.database import kingdb
 
+# Helper functions for database access
+async def get_variable(key: str, default=None):
+    """Get variable from database"""
+    return await kingdb.get_variable(key, default)
+
+async def set_variable(key: str, value):
+    """Set variable in database"""
+    await kingdb.set_variable(key, value)
 #=============================================================================================================================================================================
 # -------------------- HELPER FUNCTIONS FOR USER VERIFICATION IN DIFFERENT CASES --------------------
 #=============================================================================================================================================================================
