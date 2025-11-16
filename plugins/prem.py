@@ -334,7 +334,7 @@ async def remove_premium_command(client: Client, message: Message):
     await message.reply_chat_action(ChatAction.TYPING)
 
     # Check if user is admin
-    if not await is_admin(message.from_user.id):
+    if not await is_admin(0, 0, 0, message.from_user.id):
         return await message.reply_text(
             "<blockquote expandable>⛔ 𝘼𝙘𝙘𝙚𝙨𝙨 𝘿𝙚𝙣𝙞𝙚𝙙</blockquote>\n\n"
             "❌ <i>Only admins can use this command</i>"
@@ -399,7 +399,7 @@ async def check_premium_command(client: Client, message: Message):
             user_id = message.from_user.id
         else:
             # Only admins can check other users
-            if not await is_admin(message.from_user.id):
+            if not await is_admin(0, 0, 0, message.from_user.id):
                 return await message.reply_text(
                     "<blockquote expandable>⛔ 𝘼𝙘𝙘𝙚𝙨𝙨 𝘿𝙚𝙣𝙞𝙚𝙙</blockquote>\n\n"
                     "❌ <i>Only admins can check other users' premium status</i>"
@@ -425,7 +425,7 @@ async def list_premium_command(client: Client, message: Message):
     await message.reply_chat_action(ChatAction.TYPING)
 
     # Check if user is admin
-    if not await is_admin(message.from_user.id):
+    if not await is_admin(0, 0, 0, message.from_user.id):
         return await message.reply_text(
             "<blockquote expandable>⛔ 𝘼𝙘𝙘𝙚𝙨𝙨 𝘿𝙚𝙣𝙞𝙚𝙙</blockquote>\n\n"
             "❌ <i>Only admins can view premium users list</i>"
