@@ -247,8 +247,10 @@ class PremiumManager:
     async def get_all_premium_users() -> list:
         """Get list of all premium users"""
         try:
+            logging.info("started")
             all_users = await kingdb.full_userbase()
             premium_users = []
+            logg
 
             for user_id in all_users:
                 status = await PremiumManager.check_premium(user_id)
@@ -260,7 +262,7 @@ class PremiumManager:
 
             return premium_users
         except Exception as e:
-            logger.error(f"Error fetching premium users: {e}")
+            logging.error(f"Error fetching premium users: {e}")
             return []
 
     @staticmethod
