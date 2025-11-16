@@ -8,7 +8,8 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, 
 from pyrogram.enums import ParseMode, ChatAction
 from helper_func import is_admin
 
-logger=LOGGER(__name__)
+
+logging = logging.getLogger(__name__)   
 
 # ==================== Helper Classes ====================
 async def send_premium_tutorial(message: Message, error: str = None) -> None:
