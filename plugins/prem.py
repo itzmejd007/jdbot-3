@@ -249,6 +249,7 @@ class PremiumManager:
         try:
             logging.info("started")
             all_users = await kingdb.full_userbase()
+            logging.info(all_users)
             premium_users = []
         
 
@@ -259,7 +260,7 @@ class PremiumManager:
                         "user_id": user_id,
                         **status
                     })
-
+            logging.info(premium_users)
             return premium_users
         except Exception as e:
             logging.error(f"Error fetching premium users: {e}")
