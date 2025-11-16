@@ -12,7 +12,7 @@ from helper_func import is_admin
 
 logging = logging.getLogger(__name__)   
 
-# ==================== Helper Classes ====================
+# ==================== Helper Functions ====================
 async def send_premium_tutorial(message: Message, error: str = None) -> None:
     """
     Send premium command usage tutorial
@@ -141,8 +141,31 @@ def format_duration_display(seconds: int) -> str:
             return f"{years} year{'s' if years != 1 else ''} {months} month{'s' if months != 1 else ''}"
         return f"{years} year{'s' if years != 1 else ''}"
 
+
+# ==================== Premium Manager Class ====================
 class PremiumManager:
-    """Centralized premium management system"""
+    """Centralized premium management system with optimized storage"""
+
+    PREMIUM_SET_KEY = "premium_users_set"  # Key for the set of premium users
+    
+    @staticmethod
+    async def _get_premium_set() -> dict:
+        """
+        Get the premium users set from database
+        Returns: dict with user_id as key and premium data as value
+        """
+        premium_set = await kingdb.get_variable(PremiumManager.PREMIUM_SET_KEY)
+        return premium_set if premium_set else {}
+    
+    @staticmethod
+    async def _save_premium_set(premium_set: dict) -> None:
+        """
+        Save the premium users set to database
+        
+        Args:
+            premium_set: Dictionary of premium users
+        """
+        await kingdb.set_variable(PremiumManager.PREMIUM_SET_KEY, premium_set)
 
     @staticmethod
     async def add_premium(user_id: int, duration_seconds: int, added_by: int) -> dict:
@@ -152,14 +175,20 @@ class PremiumManager:
         """
         try:
             expiry_date = datetime.now() + timedelta(seconds=duration_seconds)
-
-            # Store premium data
-            await kingdb.set_variable(f"premium_{user_id}", {
+            
+            # Get premium set
+            premium_set = await PremiumManager._get_premium_set()
+            
+            # Add/Update user in premium set
+            premium_set[str(user_id)] = {
                 "expiry": expiry_date.isoformat(),
                 "added_by": added_by,
                 "added_at": datetime.now().isoformat(),
                 "duration_seconds": duration_seconds
-            })
+            }
+            
+            # Save updated set
+            await PremiumManager._save_premium_set(premium_set)
 
             return {
                 "success": True,
@@ -167,6 +196,7 @@ class PremiumManager:
                 "message": f"Premium added successfully until {expiry_date.strftime('%d %b %Y, %I:%M %p')}"
             }
         except Exception as e:
+            logging.error(f"Error adding premium for user {user_id}: {e}")
             return {
                 "success": False,
                 "message": f"Failed to add premium: {str(e)}"
@@ -176,21 +206,29 @@ class PremiumManager:
     async def remove_premium(user_id: int) -> dict:
         """Remove premium access from a user"""
         try:
-            premium_data = await kingdb.get_variable(f"premium_{user_id}")
-
-            if not premium_data:
+            # Get premium set
+            premium_set = await PremiumManager._get_premium_set()
+            
+            user_key = str(user_id)
+            
+            if user_key not in premium_set:
                 return {
                     "success": False,
                     "message": "User doesn't have premium access"
                 }
-
-            await kingdb.set_variable(f"premium_{user_id}", None)
+            
+            # Remove user from set
+            del premium_set[user_key]
+            
+            # Save updated set
+            await PremiumManager._save_premium_set(premium_set)
 
             return {
                 "success": True,
                 "message": "Premium access removed successfully"
             }
         except Exception as e:
+            logging.error(f"Error removing premium for user {user_id}: {e}")
             return {
                 "success": False,
                 "message": f"Failed to remove premium: {str(e)}"
@@ -203,19 +241,23 @@ class PremiumManager:
         Returns: dict with premium status and details
         """
         try:
-            premium_data = await kingdb.get_variable(f"premium_{user_id}")
-
-            if not premium_data:
+            # Get premium set
+            premium_set = await PremiumManager._get_premium_set()
+            
+            user_key = str(user_id)
+            
+            if user_key not in premium_set:
                 return {
                     "is_premium": False,
                     "message": "User doesn't have premium access"
                 }
-
+            
+            premium_data = premium_set[user_key]
             expiry = datetime.fromisoformat(premium_data["expiry"])
             now = datetime.now()
 
             if expiry < now:
-                # Premium expired
+                # Premium expired - remove from set
                 await PremiumManager.remove_premium(user_id)
                 return {
                     "is_premium": False,
@@ -237,6 +279,7 @@ class PremiumManager:
                 "duration_seconds": premium_data.get("duration_seconds", 0)
             }
         except Exception as e:
+            logging.error(f"Error checking premium for user {user_id}: {e}")
             return {
                 "is_premium": False,
                 "error": True,
@@ -245,25 +288,64 @@ class PremiumManager:
 
     @staticmethod
     async def get_all_premium_users() -> list:
-        """Get list of all premium users"""
+        """Get list of all premium users with their details"""
         try:
-            logging.info("started")
-            all_users = await kingdb.full_userbase()
+            premium_set = await PremiumManager._get_premium_set()
             premium_users = []
-        
+            
+            # Get current time once
+            now = datetime.now()
+            expired_users = []
 
-            for user_id in all_users:
-                status = await PremiumManager.check_premium(user_id)
-                if status.get("is_premium"):
+            for user_id_str, premium_data in premium_set.items():
+                try:
+                    user_id = int(user_id_str)
+                    expiry = datetime.fromisoformat(premium_data["expiry"])
+                    
+                    # Check if expired
+                    if expiry < now:
+                        expired_users.append(user_id)
+                        continue
+                    
+                    time_left = expiry - now
+                    days_left = time_left.days
+                    hours_left = time_left.seconds // 3600
+                    
                     premium_users.append({
                         "user_id": user_id,
-                        **status
+                        "is_premium": True,
+                        "expiry_date": expiry,
+                        "days_left": days_left,
+                        "hours_left": hours_left,
+                        "added_by": premium_data.get("added_by"),
+                        "added_at": premium_data.get("added_at"),
+                        "duration_seconds": premium_data.get("duration_seconds", 0)
                     })
-            logging.info(f"premium_users:- {premium_users}")
+                except Exception as e:
+                    logging.error(f"Error processing premium user {user_id_str}: {e}")
+                    continue
+            
+            # Clean up expired users
+            if expired_users:
+                for user_id in expired_users:
+                    await PremiumManager.remove_premium(user_id)
+                logging.info(f"Cleaned up {len(expired_users)} expired premium users")
+            
             return premium_users
+            
         except Exception as e:
             logging.error(f"Error fetching premium users: {e}")
             return []
+
+    @staticmethod
+    async def get_premium_count() -> int:
+        """Get total count of active premium users"""
+        try:
+            premium_set = await PremiumManager._get_premium_set()
+            return len(premium_set)
+        except Exception as e:
+            logging.error(f"Error getting premium count: {e}")
+            return 0
 
     @staticmethod
     def format_time_remaining(days: int, hours: int) -> str:
@@ -277,7 +359,6 @@ class PremiumManager:
 
 
 # ==================== Message Builders ====================
-
 class PremiumMessageBuilder:
     """Build formatted premium messages"""
 
@@ -334,7 +415,6 @@ class PremiumMessageBuilder:
     @staticmethod
     def build_list_message(premium_users: list, page: int = 1, per_page: int = 10) -> tuple:
         """Build premium users list message with pagination"""
-        logging.info(f"premium_users = {premium_users}")
         if not premium_users:
             return (
                 "<blockquote expandable>📋 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙐𝙨𝙚𝙧𝙨 𝙇𝙞𝙨𝙩</blockquote>\n\n"
@@ -419,9 +499,6 @@ async def add_premium_command(client: Client, message: Message):
     except ValueError:
         return await send_premium_tutorial(message, error="User ID must be a valid number")
 
-    # Convert seconds to days for storage
-    duration_days = duration_seconds / 86400
-
     # Add premium
     result = await PremiumManager.add_premium(user_id, duration_seconds, message.from_user.id)
 
@@ -454,7 +531,7 @@ async def add_premium_command(client: Client, message: Message):
                 )
             )
         except Exception as e:
-            print(f"Failed to notify user {user_id}: {e}")
+            logging.error(f"Failed to notify user {user_id}: {e}")
     else:
         await message.reply_text(
             f"<blockquote expandable>❌ 𝙁𝙖𝙞𝙡𝙚𝙙</blockquote>\n\n"
@@ -511,7 +588,7 @@ async def remove_premium_command(client: Client, message: Message):
                 )
             )
         except Exception as e:
-            print(f"Failed to notify user {user_id}: {e}")
+            logging.error(f"Failed to notify user {user_id}: {e}")
     else:
         await message.reply_text(
             f"<blockquote expandable>❌ 𝙁𝙖𝙞𝙡𝙚𝙙</blockquote>\n\n"
@@ -564,17 +641,22 @@ async def list_premium_command(client: Client, message: Message):
             "<blockquote expandable>⛔ 𝘼𝙘𝙘𝙚𝙨𝙨 𝘿𝙚𝙣𝙞𝙚𝙙</blockquote>\n\n"
             "❌ <i>Only admins can view premium users list</i>"
         )
+    
     try:
         # Get all premium users
-        await message.reply_text("h")
         premium_users = await PremiumManager.get_all_premium_users()
-        logging.info(premium_users)
-        await message.reply_text(premium_users)
+        
         # Build and send list
         list_msg, keyboard = PremiumMessageBuilder.build_list_message(premium_users)
         await message.reply_text(list_msg, reply_markup=keyboard)
+        
     except Exception as e:
-        await message.reply_text(e)
+        logging.error(f"Error in list premium command: {e}")
+        await message.reply_text(
+            f"<blockquote expandable>❌ 𝙀𝙧𝙧𝙤𝙧</blockquote>\n\n"
+            f"<b>Failed to fetch premium users:</b>\n"
+            f"<code>{str(e)}</code>"
+        )
 
 
 @Client.on_message(filters.command('mypremium') & filters.private)
@@ -620,6 +702,64 @@ async def my_premium_command(client: Client, message: Message):
     )
 
 
+@Client.on_message(filters.command('premstats') & filters.private)
+async def premium_stats_command(client: Client, message: Message):
+    """Show premium statistics (admin only)"""
+    await message.reply_chat_action(ChatAction.TYPING)
+
+    # Check if user is admin
+    if not await is_admin(0, 0, message.from_user.id):
+        return await message.reply_text(
+            "<blockquote expandable>⛔ 𝘼𝙘𝙘𝙚𝙨𝙨 𝘿𝙚𝙣𝙞𝙚𝙙</blockquote>\n\n"
+            "❌ <i>Only admins can view statistics</i>"
+        )
+
+    try:
+        premium_users = await PremiumManager.get_all_premium_users()
+        total_count = len(premium_users)
+        
+        if total_count == 0:
+            return await message.reply_text(
+                "<blockquote expandable>📊 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙎𝙩𝙖𝙩𝙞𝙨𝙩𝙞𝙘𝙨</blockquote>\n\n"
+                "ℹ️ <i>No premium users currently</i>"
+            )
+        
+        # Calculate statistics
+        expiring_soon = sum(1 for user in premium_users if user["days_left"] <= 7)
+        expiring_today = sum(1 for user in premium_users if user["days_left"] == 0)
+        
+        stats_text = (
+            f"<blockquote expandable>📊 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙎𝙩𝙖𝙩𝙞𝙨𝙩𝙞𝙘𝙨</blockquote>\n\n"
+            f"👥 <b>Total Premium Users:</b> <code>{total_count}</code>\n"
+            f"⚠️ <b>Expiring in 7 Days:</b> <code>{expiring_soon}</code>\n"
+            f"🔴 <b>Expiring Today:</b> <code>{expiring_today}</code>\n\n"
+        )
+        
+        # Show top 5 users with most time left
+        sorted_users = sorted(premium_users, key=lambda x: x["days_left"], reverse=True)[:5]
+        
+        if sorted_users:
+            stats_text += "<b>🏆 Top Premium Users:</b>\n\n"
+            for idx, user in enumerate(sorted_users, 1):
+                time_left = PremiumManager.format_time_remaining(user["days_left"], user["hours_left"])
+                stats_text += f"<b>{idx}.</b> <code>{user['user_id']}</code> - <i>{time_left}</i>\n"
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📋 View Full List", callback_data="prem_list_1")],
+            [InlineKeyboardButton("🔄 Refresh", callback_data="prem_stats")],
+            [InlineKeyboardButton("❌ Close", callback_data="close")]
+        ])
+        
+        await message.reply_text(stats_text, reply_markup=keyboard)
+        
+    except Exception as e:
+        logging.error(f"Error in premium stats: {e}")
+        await message.reply_text(
+            f"<blockquote expandable>❌ 𝙀𝙧𝙧𝙤𝙧</blockquote>\n\n"
+            f"<code>{str(e)}</code>"
+        )
+
+
 # ==================== Callback Query Handlers ====================
 
 @Client.on_callback_query(filters.regex(r'^prem_list_(\d+)$'))
@@ -627,7 +767,7 @@ async def premium_list_pagination(client: Client, query: CallbackQuery):
     """Handle premium list pagination"""
 
     # Check if user is admin
-    if not await is_admin(query.from_user.id):
+    if not await is_admin(0, 0, query.from_user.id):
         return await query.answer("⛔ Only admins can view this!", show_alert=True)
 
     page = int(query.data.split('_')[-1])
@@ -640,8 +780,59 @@ async def premium_list_pagination(client: Client, query: CallbackQuery):
 
     try:
         await query.edit_message_text(list_msg, reply_markup=keyboard)
-    except:
+        await query.answer()
+    except Exception as e:
         await query.answer("Already on this page!", show_alert=False)
+
+
+@Client.on_callback_query(filters.regex('^prem_stats$'))
+async def premium_stats_callback(client: Client, query: CallbackQuery):
+    """Handle premium stats refresh"""
+    
+    # Check if user is admin
+    if not await is_admin(0, 0, query.from_user.id):
+        return await query.answer("⛔ Only admins can view this!", show_alert=True)
+    
+    try:
+        premium_users = await PremiumManager.get_all_premium_users()
+        total_count = len(premium_users)
+        
+        if total_count == 0:
+            stats_text = (
+                "<blockquote expandable>📊 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙎𝙩𝙖𝙩𝙞𝙨𝙩𝙞𝙘𝙨</blockquote>\n\n"
+                "ℹ️ <i>No premium users currently</i>"
+            )
+        else:
+            expiring_soon = sum(1 for user in premium_users if user["days_left"] <= 7)
+            expiring_today = sum(1 for user in premium_users if user["days_left"] == 0)
+            
+            stats_text = (
+                f"<blockquote expandable>📊 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙎𝙩𝙖𝙩𝙞𝙨𝙩𝙞𝙘𝙨</blockquote>\n\n"
+                f"👥 <b>Total Premium Users:</b> <code>{total_count}</code>\n"
+                f"⚠️ <b>Expiring in 7 Days:</b> <code>{expiring_soon}</code>\n"
+                f"🔴 <b>Expiring Today:</b> <code>{expiring_today}</code>\n\n"
+            )
+            
+            sorted_users = sorted(premium_users, key=lambda x: x["days_left"], reverse=True)[:5]
+            
+            if sorted_users:
+                stats_text += "<b>🏆 Top Premium Users:</b>\n\n"
+                for idx, user in enumerate(sorted_users, 1):
+                    time_left = PremiumManager.format_time_remaining(user["days_left"], user["hours_left"])
+                    stats_text += f"<b>{idx}.</b> <code>{user['user_id']}</code> - <i>{time_left}</i>\n"
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📋 View Full List", callback_data="prem_list_1")],
+            [InlineKeyboardButton("🔄 Refresh", callback_data="prem_stats")],
+            [InlineKeyboardButton("❌ Close", callback_data="close")]
+        ])
+        
+        await query.edit_message_text(stats_text, reply_markup=keyboard)
+        await query.answer("Stats refreshed! ✅")
+        
+    except Exception as e:
+        logging.error(f"Error refreshing stats: {e}")
+        await query.answer("Failed to refresh stats!", show_alert=True)
 
 
 @Client.on_callback_query(filters.regex('^prem$'))
@@ -669,88 +860,130 @@ async def premium_info_callback(client: Client, query: CallbackQuery):
         )
 
 
+@Client.on_callback_query(filters.regex('^close$'))
+async def close_callback(client: Client, query: CallbackQuery):
+    """Handle close button"""
+    try:
+        await query.message.delete()
+    except:
+        pass
+
+
 # ==================== Premium Expiry Monitor ====================
 
 async def premium_expiry_monitor():
     """
     Background task to monitor and remove expired premium users
-    Runs every 1 minute
+    Runs every 5 minutes
     """
-    print("🔄 Premium expiry monitor started")
+    logging.info("🔄 Premium expiry monitor started")
 
     while True:
         try:
-            await asyncio.sleep(60)  # Check every 1 minute
+            await asyncio.sleep(300)  # Check every 5 minutes
 
-            all_users = await kingdb.full_userbase()
-            expired_count = 0
-
-            for user_id in all_users:
-                try:
-                    status = await PremiumManager.check_premium(user_id)
-
-                    # If expired flag is set, user was just removed
-                    if status.get("expired"):
-                        expired_count += 1
-                        print(f"🗑️ Removed expired premium for user: {user_id}")
-
-                        # Try to notify user about expiry
-                        try:
-                            await Bot.send_message(
-                                chat_id=user_id,
-                                text=(
-                                    f"<blockquote expandable>⏰ 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙀𝙭𝙥𝙞𝙧𝙚𝙙</blockquote>\n\n"
-                                    f"Your premium subscription has ended.\n\n"
-                                    f"💎 <b>Want to continue?</b>\n"
-                                    f"Contact admin to renew your premium access!\n\n"
-                                    f"<i>Thank you for being a premium member!</i> 💖"
-                                )
-                            )
-                        except Exception as e:
-                            print(f"Failed to notify expired user {user_id}: {e}")
-
-                except Exception as e:
-                    print(f"Error checking user {user_id}: {e}")
-                    continue
-
-            if expired_count > 0:
-                print(f"✅ Premium monitor: Removed {expired_count} expired user(s)")
+            premium_users = await PremiumManager.get_all_premium_users()
+            
+            # The get_all_premium_users already removes expired users
+            # We just need to notify them
+            
+            logging.info(f"✅ Premium monitor: Active users checked - {len(premium_users)} premium users")
 
         except Exception as e:
-            print(f"❌ Error in premium expiry monitor: {e}")
-            await asyncio.sleep(60)  # Wait before retrying
+            logging.error(f"❌ Error in premium expiry monitor: {e}")
+            await asyncio.sleep(300)  # Wait before retrying
 
 
-# ==================== Auto-start Monitor ====================
+async def notify_expiring_soon():
+    """
+    Notify users whose premium is expiring within 24 hours
+    Runs once daily
+    """
+    logging.info("📢 Starting expiring soon notifications")
+    
+    while True:
+        try:
+            await asyncio.sleep(86400)  # Run once every 24 hours
+            
+            premium_users = await PremiumManager.get_all_premium_users()
+            
+            for user in premium_users:
+                # Notify if expiring within 24 hours
+                if user["days_left"] == 0 and user["hours_left"] <= 24:
+                    try:
+                        time_left = PremiumManager.format_time_remaining(
+                            user["days_left"],
+                            user["hours_left"]
+                        )
+                        
+                        await Bot.send_message(
+                            chat_id=user["user_id"],
+                            text=(
+                                f"<blockquote expandable>⚠️ 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙀𝙭𝙥𝙞𝙧𝙞𝙣𝙜 𝙎𝙤𝙤𝙣</blockquote>\n\n"
+                                f"Your premium subscription is expiring soon!\n\n"
+                                f"⏳ <b>Time Remaining:</b> <code>{time_left}</code>\n\n"
+                                f"💡 <b>Renew now to continue enjoying:</b>\n"
+                                f"• 🚫 No ads or verification\n"
+                                f"• ⚡ Direct download links\n"
+                                f"• 🎯 Priority support\n"
+                                f"• 🔓 Unlimited access\n\n"
+                                f"<i>Contact admin to renew your premium!</i>"
+                            )
+                        )
+                        logging.info(f"Notified user {user['user_id']} about expiring premium")
+                    except Exception as e:
+                        logging.error(f"Failed to notify user {user['user_id']}: {e}")
+            
+        except Exception as e:
+            logging.error(f"Error in expiring soon notifications: {e}")
+            await asyncio.sleep(86400)
 
-async def start_monitor_command(client: Client, message: Message):
-    """Manually start the premium expiry monitor (admin only)"""
 
-    if message.from_user.id not in OWNER_ID:
-        return await message.reply_text("⛔ Owner only command!")
+# ==================== Initialization ====================
 
+def start_premium_monitors():
+    """Start all premium monitoring tasks"""
     asyncio.create_task(premium_expiry_monitor())
-
-    await message.reply_text(
-        "<blockquote expandable>✅ 𝙈𝙤𝙣𝙞𝙩𝙤𝙧 𝙎𝙩𝙖𝙧𝙩𝙚𝙙</blockquote>\n\n"
-        "🔄 Premium expiry monitor is now running\n\n"
-        "ℹ️ <i>Checks every 1 minute for expired users</i>"
-    )
+    asyncio.create_task(notify_expiring_soon())
+    logging.info("✅ All premium monitors started")
 
 
-# Start monitor automatically when bot starts
+# ==================== Premium Purchase Handler ====================
 
 QR_IMG_LINK = "https://i.ibb.co/5xtpFb2T/f4faad6ca1c1.jpg"
 
 
 async def prem(client, query):
-    text = "🌟 <b>Premium Access</b> 🌟<b>\n</b><blockquote expandable><b><i>🔥 Elevate your experience with Premium Access! 🔥</i></b></blockquote>\n\n<b>💸 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs:\n➥ ₹40 - </b>1 ᴍᴏɴᴛʜ ᴀᴄᴄᴇss<b>\n➥ ₹199 - </b>6 ᴍᴏɴᴛʜ ᴀᴄᴄᴇss<b>\n➥ ₹399 - </b>1 ʏᴇᴀʀ ᴀᴄᴄᴇss\n\n<blockquote expandable>🛍 <b>ʜᴏᴡ ᴛᴏ ᴘᴜʀᴄʜᴀsᴇ ᴘʀᴇᴍɪᴜᴍ -</b>\n\n💫 <b>sᴄᴀɴ</b> ᴛʜᴇ ǫʀ ᴄᴏᴅᴇ Ꭺʙᴏvᴇ.\n💫 <b>sᴇɴᴅ</b> ᴛʜᴇ ᴄᴏʀʀᴇᴄᴛ ᴀᴍᴏᴜɴᴛ ᴀᴄᴄᴏʀᴅɪɴɢ ᴛᴏ ᴛʜᴇ ᴘʟᴀɴ ʏᴏᴜ ᴡᴀɴᴛ.\n💫 <b>ʀᴇᴘᴏʀᴛ</b> ʏᴏᴜʀ ᴘᴀʏᴍᴇɴᴛ sᴄʀᴇᴇɴsʜᴏᴛ ᴛᴏ ᴛʜᴇ ᴏᴡɴᴇʀ ᴜsɪɴɢ ᴛʜᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ!                                              \n</blockquote>📨 𝚄𝙿𝙸 𝙸𝙳: upi@upi \n\n<blockquote expandable>🎉 <i>Premium Benefits:\n🔅Unlimited Access\n🔅 No Ads\n🔅 Faster Experience\n🔅 Priority Support</i>                                            </blockquote>\n\n<b>⚠️ </b>ɪᴍᴘᴏʀᴛᴀɴᴛ ɴᴏᴛᴇ ⚠️:\n📌 <i>Send the correct amount as per the plan.\n📌 No refunds once the transaction is make.</i>\n\n<blockquote expandable><b><i>🙌 Success starts when you invest in yourself. Unlock the best with Premium.</i></b></blockquote>"
-    key = InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("ꜱᴇɴᴅ ᴘʀᴏᴏꜰ 🗞️", url="t.me/JD_Namikaze")],
-            [InlineKeyboardButton("ᴄᴀɴᴄᴇʟ ", callback_data=f"close")],
-        ]
+    """Handle premium purchase info display"""
+    text = (
+        "🌟 <b>Premium Access</b> 🌟<b>\n</b>"
+        "<blockquote expandable><b><i>🔥 Elevate your experience with Premium Access! 🔥</i></b></blockquote>\n\n"
+        "<b>💸 ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴs:\n"
+        "➥ ₹40 - </b>1 ᴍᴏɴᴛʜ ᴀᴄᴄᴇss<b>\n"
+        "➥ ₹199 - </b>6 ᴍᴏɴᴛʜ ᴀᴄᴄᴇss<b>\n"
+        "➥ ₹399 - </b>1 ʏᴇᴀʀ ᴀᴄᴄᴇss\n\n"
+        "<blockquote expandable>🛍 <b>ʜᴏᴡ ᴛᴏ ᴘᴜʀᴄʜᴀsᴇ ᴘʀᴇᴍɪᴜᴍ -</b>\n\n"
+        "💫 <b>sᴄᴀɴ</b> ᴛʜᴇ ǫʀ ᴄᴏᴅᴇ Ꭺʙᴏvᴇ.\n"
+        "💫 <b>sᴇɴᴅ</b> ᴛʜᴇ ᴄᴏʀʀᴇᴄᴛ ᴀᴍᴏᴜɴᴛ ᴀᴄᴄᴏʀᴅɪɴɢ ᴛᴏ ᴛʜᴇ ᴘʟᴀɴ ʏᴏᴜ ᴡᴀɴᴛ.\n"
+        "💫 <b>ʀᴇᴘᴏʀᴛ</b> ʏᴏᴜʀ ᴘᴀʏᴍᴇɴᴛ sᴄʀᴇᴇɴsʜᴏᴛ ᴛᴏ ᴛʜᴇ ᴏᴡɴᴇʀ ᴜsɪɴɢ ᴛʜᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ!                                              \n"
+        "</blockquote>"
+        "📨 𝚄𝙿𝙸 𝙸𝙳: upi@upi \n\n"
+        "<blockquote expandable>🎉 <i>Premium Benefits:\n"
+        "🔅Unlimited Access\n"
+        "🔅 No Ads\n"
+        "🔅 Faster Experience\n"
+        "🔅 Priority Support</i>                                            </blockquote>\n\n"
+        "<b>⚠️ </b>ɪᴍᴘᴏʀᴛᴀɴᴛ ɴᴏᴛᴇ ⚠️:\n"
+        "📌 <i>Send the correct amount as per the plan.\n"
+        "📌 No refunds once the transaction is make.</i>\n\n"
+        "<blockquote expandable><b><i>🙌 Success starts when you invest in yourself. Unlock the best with Premium.</i></b></blockquote>"
     )
+    
+    key = InlineKeyboardMarkup([
+        [InlineKeyboardButton("ꜱᴇɴᴅ ᴘʀᴏᴏꜰ 🗞️", url="t.me/JD_Namikaze")],
+        [InlineKeyboardButton("ᴄᴀɴᴄᴇʟ ", callback_data="close")],
+    ])
+    
     await query.message.delete()
     await client.send_photo(
         photo=QR_IMG_LINK,
@@ -760,4 +993,545 @@ async def prem(client, query):
     )
 
 
+# ==================== Helper Function for Other Modules ====================
 
+async def is_premium_user(user_id: int) -> bool:
+    """
+    Quick check if a user has active premium
+    Can be used by other modules
+    
+    Args:
+        user_id: User ID to check
+        
+    Returns:
+        bool: True if user has active premium, False otherwise
+    """
+    status = await PremiumManager.check_premium(user_id)
+    return status.get("is_premium", False)
+
+
+# ==================== Bulk Premium Operations ====================
+
+@Client.on_message(filters.command('addpremiumlist') & filters.private)
+async def add_premium_bulk_command(client: Client, message: Message):
+    """
+    Add premium to multiple users at once
+    Usage: /addpremiumlist user_id1,user_id2,user_id3 duration
+    """
+    await message.reply_chat_action(ChatAction.TYPING)
+
+    # Check if user is admin
+    if not await is_admin(0, 0, message.from_user.id):
+        return await message.reply_text(
+            "<blockquote expandable>⛔ 𝘼𝙘𝙘𝙚𝙨𝙨 𝘿𝙚𝙣𝙞𝙚𝙙</blockquote>\n\n"
+            "❌ <i>Only admins can use this command</i>"
+        )
+
+    args = message.text.split()
+    
+    if len(args) < 3:
+        return await message.reply_text(
+            "<blockquote expandable>ℹ️ 𝘽𝙪𝙡𝙠 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙂𝙪𝙞𝙙𝙚</blockquote>\n\n"
+            "<b>Usage:</b>\n"
+            "<code>/addpremiumlist user_id1,user_id2,user_id3 duration</code>\n\n"
+            "<b>Example:</b>\n"
+            "<code>/addpremiumlist 123,456,789 1mo</code>\n\n"
+            "<i>Separate user IDs with commas (no spaces)</i>"
+        )
+    
+    try:
+        user_ids_str = args[1]
+        duration_input = args[2].lower()
+        
+        # Parse user IDs
+        user_ids = [int(uid.strip()) for uid in user_ids_str.split(',')]
+        
+        # Parse duration
+        duration_seconds = parse_duration(duration_input)
+        if duration_seconds is None or duration_seconds <= 0:
+            return await message.reply_text("❌ Invalid duration format!")
+        
+        duration_display = format_duration_display(duration_seconds)
+        
+        # Process each user
+        success_count = 0
+        failed_users = []
+        
+        status_msg = await message.reply_text(
+            f"<b>Processing {len(user_ids)} users...</b>\n\n"
+            f"⏳ Please wait..."
+        )
+        
+        for user_id in user_ids:
+            result = await PremiumManager.add_premium(user_id, duration_seconds, message.from_user.id)
+            
+            if result["success"]:
+                success_count += 1
+                # Try to notify user
+                try:
+                    await client.send_message(
+                        chat_id=user_id,
+                        text=(
+                            f"<blockquote expandable>🎉 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝘼𝙘𝙩𝙞𝙫𝙖𝙩𝙚𝙙</blockquote>\n\n"
+                            f"💎 You've been granted <b>{duration_display}</b> of premium access!\n\n"
+                            f"📅 <b>Valid Until:</b> <code>{result['expiry_date'].strftime('%d %b %Y, %I:%M %p')}</code>\n\n"
+                            f"✨ <i>Enjoy your premium experience!</i> 🎊"
+                        )
+                    )
+                except:
+                    pass
+            else:
+                failed_users.append(user_id)
+        
+        # Summary
+        summary = (
+            f"<blockquote expandable>✅ 𝘽𝙪𝙡𝙠 𝙊𝙥𝙚𝙧𝙖𝙩𝙞𝙤𝙣 𝘾𝙤𝙢𝙥𝙡𝙚𝙩𝙚</blockquote>\n\n"
+            f"📊 <b>Results:</b>\n"
+            f"✅ Success: <code>{success_count}</code>\n"
+            f"❌ Failed: <code>{len(failed_users)}</code>\n"
+            f"📝 Total: <code>{len(user_ids)}</code>\n\n"
+            f"⏰ <b>Duration:</b> <code>{duration_display}</code>\n"
+        )
+        
+        if failed_users:
+            summary += f"\n<b>Failed IDs:</b> <code>{', '.join(map(str, failed_users))}</code>"
+        
+        await status_msg.edit_text(summary)
+        
+    except ValueError:
+        await message.reply_text("❌ Invalid user ID format! Make sure all IDs are numbers.")
+    except Exception as e:
+        logging.error(f"Bulk premium error: {e}")
+        await message.reply_text(f"❌ Error: <code>{str(e)}</code>")
+
+
+@Client.on_message(filters.command('extendpremium') & filters.private)
+async def extend_premium_command(client: Client, message: Message):
+    """
+    Extend existing premium subscription
+    Usage: /extendpremium user_id duration
+    """
+    await message.reply_chat_action(ChatAction.TYPING)
+
+    # Check if user is admin
+    if not await is_admin(0, 0, message.from_user.id):
+        return await message.reply_text(
+            "<blockquote expandable>⛔ 𝘼𝙘𝙘𝙚𝙨𝙨 𝘿𝙚𝙣𝙞𝙚𝙙</blockquote>\n\n"
+            "❌ <i>Only admins can use this command</i>"
+        )
+
+    args = message.text.split()
+    
+    if len(args) < 3:
+        return await message.reply_text(
+            "<blockquote expandable>ℹ️ 𝙀𝙭𝙩𝙚𝙣𝙙 𝙋𝙧𝙚𝙢𝙞𝙪𝙢</blockquote>\n\n"
+            "<b>Usage:</b>\n"
+            "<code>/extendpremium user_id duration</code>\n\n"
+            "<b>Example:</b>\n"
+            "<code>/extendpremium 123456789 1mo</code>\n\n"
+            "<i>This will add time to their existing premium</i>"
+        )
+    
+    try:
+        user_id = int(args[1])
+        duration_input = args[2].lower()
+        
+        # Parse duration
+        duration_seconds = parse_duration(duration_input)
+        if duration_seconds is None or duration_seconds <= 0:
+            return await message.reply_text("❌ Invalid duration format!")
+        
+        # Check current premium status
+        status = await PremiumManager.check_premium(user_id)
+        
+        if not status.get("is_premium"):
+            return await message.reply_text(
+                "❌ User doesn't have active premium!\n\n"
+                "💡 Use <code>/addpremium</code> instead."
+            )
+        
+        # Get premium set and extend
+        premium_set = await PremiumManager._get_premium_set()
+        user_key = str(user_id)
+        
+        current_expiry = datetime.fromisoformat(premium_set[user_key]["expiry"])
+        new_expiry = current_expiry + timedelta(seconds=duration_seconds)
+        
+        # Update expiry
+        premium_set[user_key]["expiry"] = new_expiry.isoformat()
+        premium_set[user_key]["duration_seconds"] += duration_seconds
+        
+        await PremiumManager._save_premium_set(premium_set)
+        
+        duration_display = format_duration_display(duration_seconds)
+        
+        await message.reply_text(
+            f"<blockquote expandable>✅ 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙀𝙭𝙩𝙚𝙣𝙙𝙚𝙙</blockquote>\n\n"
+            f"👤 <b>User ID:</b> <code>{user_id}</code>\n"
+            f"➕ <b>Added:</b> <code>{duration_display}</code>\n"
+            f"📅 <b>New Expiry:</b> <code>{new_expiry.strftime('%d %b %Y, %I:%M %p')}</code>\n\n"
+            f"✨ <i>Premium extended successfully!</i>"
+        )
+        
+        # Notify user
+        try:
+            await client.send_message(
+                chat_id=user_id,
+                text=(
+                    f"<blockquote expandable>🎉 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙀𝙭𝙩𝙚𝙣𝙙𝙚𝙙</blockquote>\n\n"
+                    f"Your premium has been extended by <b>{duration_display}</b>!\n\n"
+                    f"📅 <b>New Expiry:</b> <code>{new_expiry.strftime('%d %b %Y, %I:%M %p')}</code>\n\n"
+                    f"✨ <i>Continue enjoying premium benefits!</i> 🎊"
+                )
+            )
+        except:
+            pass
+        
+    except ValueError:
+        await message.reply_text("❌ Invalid user ID!")
+    except Exception as e:
+        logging.error(f"Extend premium error: {e}")
+        await message.reply_text(f"❌ Error: <code>{str(e)}</code>")
+
+
+# ==================== Premium Data Export ====================
+
+@Client.on_message(filters.command('exportpremium') & filters.private)
+async def export_premium_command(client: Client, message: Message):
+    """
+    Export premium users data to a file
+    """
+    await message.reply_chat_action(ChatAction.TYPING)
+
+    # Check if user is admin
+    if not await is_admin(0, 0, message.from_user.id):
+        return await message.reply_text(
+            "<blockquote expandable>⛔ 𝘼𝙘𝙘𝙚𝙨𝙨 𝘿𝙚𝙣𝙞𝙚𝙙</blockquote>\n\n"
+            "❌ <i>Only admins can use this command</i>"
+        )
+
+    try:
+        premium_users = await PremiumManager.get_all_premium_users()
+        
+        if not premium_users:
+            return await message.reply_text("ℹ️ No premium users to export")
+        
+        # Create export text
+        export_text = "=" * 50 + "\n"
+        export_text += "PREMIUM USERS EXPORT\n"
+        export_text += f"Generated: {datetime.now().strftime('%d %b %Y, %I:%M %p')}\n"
+        export_text += f"Total Users: {len(premium_users)}\n"
+        export_text += "=" * 50 + "\n\n"
+        
+        for idx, user in enumerate(premium_users, 1):
+            time_left = PremiumManager.format_time_remaining(user["days_left"], user["hours_left"])
+            expiry = user["expiry_date"].strftime('%d %b %Y, %I:%M %p')
+            added_at = datetime.fromisoformat(user["added_at"]).strftime('%d %b %Y, %I:%M %p')
+            duration = format_duration_display(user["duration_seconds"])
+            
+            export_text += f"{idx}. USER ID: {user['user_id']}\n"
+            export_text += f"   Time Left: {time_left}\n"
+            export_text += f"   Expires: {expiry}\n"
+            export_text += f"   Added: {added_at}\n"
+            export_text += f"   Added By: {user['added_by']}\n"
+            export_text += f"   Duration: {duration}\n"
+            export_text += "-" * 50 + "\n\n"
+        
+        # Save to file
+        filename = f"premium_users_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(export_text)
+        
+        # Send file
+        await message.reply_document(
+            document=filename,
+            caption=(
+                f"<b>📊 Premium Users Export</b>\n\n"
+                f"👥 Total: <code>{len(premium_users)}</code>\n"
+                f"📅 Generated: <code>{datetime.now().strftime('%d %b %Y, %I:%M %p')}</code>"
+            )
+        )
+        
+        # Delete file
+        import os
+        os.remove(filename)
+        
+    except Exception as e:
+        logging.error(f"Export error: {e}")
+        await message.reply_text(f"❌ Export failed: <code>{str(e)}</code>")
+
+
+# ==================== Premium Search ====================
+
+@Client.on_message(filters.command('searchpremium') & filters.private)
+async def search_premium_command(client: Client, message: Message):
+    """
+    Search for a specific premium user
+    Usage: /searchpremium user_id
+    """
+    await message.reply_chat_action(ChatAction.TYPING)
+
+    # Check if user is admin
+    if not await is_admin(0, 0, message.from_user.id):
+        return await message.reply_text(
+            "<blockquote expandable>⛔ 𝘼𝙘𝙘𝙚𝙨𝙨 𝘿𝙚𝙣𝙞𝙚𝙙</blockquote>\n\n"
+            "❌ <i>Only admins can use this command</i>"
+        )
+
+    args = message.text.split()
+    
+    if len(args) < 2:
+        return await message.reply_text(
+            "<blockquote expandable>ℹ️ 𝙎𝙚𝙖𝙧𝙘𝙝 𝙋𝙧𝙚𝙢𝙞𝙪𝙢</blockquote>\n\n"
+            "<b>Usage:</b>\n"
+            "<code>/searchpremium user_id</code>"
+        )
+    
+    try:
+        user_id = int(args[1])
+        status = await PremiumManager.check_premium(user_id)
+        
+        # Build detailed status message
+        status_msg = PremiumMessageBuilder.build_status_message(user_id, status)
+        
+        # Add quick actions
+        if status.get("is_premium"):
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("🔄 Extend", callback_data=f"extend_{user_id}"),
+                    InlineKeyboardButton("🗑️ Remove", callback_data=f"confirm_remove_{user_id}")
+                ],
+                [InlineKeyboardButton("❌ Close", callback_data="close")]
+            ])
+        else:
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("➕ Add Premium", callback_data=f"add_{user_id}")],
+                [InlineKeyboardButton("❌ Close", callback_data="close")]
+            ])
+        
+        await message.reply_text(status_msg, reply_markup=keyboard)
+        
+    except ValueError:
+        await message.reply_text("❌ Invalid user ID!")
+
+
+# ==================== Premium History ====================
+
+@Client.on_message(filters.command('premiumhistory') & filters.private)
+async def premium_history_command(client: Client, message: Message):
+    """
+    View premium addition history
+    Shows recent premium additions
+    """
+    await message.reply_chat_action(ChatAction.TYPING)
+
+    # Check if user is admin
+    if not await is_admin(0, 0, message.from_user.id):
+        return await message.reply_text(
+            "<blockquote expandable>⛔ 𝘼𝙘𝙘𝙚𝙨𝙨 𝘿𝙚𝙣𝙞𝙚𝙙</blockquote>\n\n"
+            "❌ <i>Only admins can use this command</i>"
+        )
+
+    try:
+        premium_users = await PremiumManager.get_all_premium_users()
+        
+        if not premium_users:
+            return await message.reply_text("ℹ️ No premium history available")
+        
+        # Sort by added date (most recent first)
+        sorted_users = sorted(
+            premium_users,
+            key=lambda x: datetime.fromisoformat(x["added_at"]),
+            reverse=True
+        )[:20]  # Show last 20
+        
+        history_text = (
+            f"<blockquote expandable>📜 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙃𝙞𝙨𝙩𝙤𝙧𝙮</blockquote>\n\n"
+            f"<b>Recent Additions (Last 20):</b>\n\n"
+        )
+        
+        for idx, user in enumerate(sorted_users, 1):
+            added_at = datetime.fromisoformat(user["added_at"]).strftime('%d %b %y, %I:%M %p')
+            duration = format_duration_display(user["duration_seconds"])
+            
+            history_text += (
+                f"<b>{idx}.</b> 👤 <code>{user['user_id']}</code>\n"
+                f"   📅 {added_at}\n"
+                f"   ⏰ {duration}\n"
+                f"   👨‍💼 By: <code>{user['added_by']}</code>\n\n"
+            )
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📊 View Stats", callback_data="prem_stats")],
+            [InlineKeyboardButton("❌ Close", callback_data="close")]
+        ])
+        
+        await message.reply_text(history_text, reply_markup=keyboard)
+        
+    except Exception as e:
+        logging.error(f"History error: {e}")
+        await message.reply_text(f"❌ Error: <code>{str(e)}</code>")
+
+
+# ==================== Advanced Callback Handlers ====================
+
+@Client.on_callback_query(filters.regex(r'^confirm_remove_(\d+)$'))
+async def confirm_remove_callback(client: Client, query: CallbackQuery):
+    """Confirm premium removal"""
+    
+    if not await is_admin(0, 0, query.from_user.id):
+        return await query.answer("⛔ Only admins can do this!", show_alert=True)
+    
+    user_id = int(query.data.split('_')[-1])
+    
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Yes, Remove", callback_data=f"remove_{user_id}"),
+            InlineKeyboardButton("❌ Cancel", callback_data="close")
+        ]
+    ])
+    
+    await query.edit_message_text(
+        f"<b>⚠️ Confirm Action</b>\n\n"
+        f"Are you sure you want to remove premium from user <code>{user_id}</code>?\n\n"
+        f"<i>This action cannot be undone!</i>",
+        reply_markup=keyboard
+    )
+
+
+@Client.on_callback_query(filters.regex(r'^remove_(\d+)$'))
+async def remove_premium_callback(client: Client, query: CallbackQuery):
+    """Actually remove premium"""
+    
+    if not await is_admin(0, 0, query.from_user.id):
+        return await query.answer("⛔ Only admins can do this!", show_alert=True)
+    
+    user_id = int(query.data.split('_')[-1])
+    
+    result = await PremiumManager.remove_premium(user_id)
+    
+    if result["success"]:
+        await query.edit_message_text(
+            PremiumMessageBuilder.build_remove_success_message(user_id)
+        )
+        
+        # Notify user
+        try:
+            await client.send_message(
+                chat_id=user_id,
+                text=(
+                    f"<blockquote expandable>ℹ️ 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝙀𝙭𝙥𝙞𝙧𝙚𝙙</blockquote>\n\n"
+                    f"Your premium access has ended.\n\n"
+                    f"💡 <i>Contact admin to renew premium access</i>"
+                )
+            )
+        except:
+            pass
+        
+        await query.answer("Premium removed successfully! ✅")
+    else:
+        await query.answer(result["message"], show_alert=True)
+
+
+# ==================== Help Command ====================
+
+@Client.on_message(filters.command('premiumhelp') & filters.private)
+async def premium_help_command(client: Client, message: Message):
+    """Show all premium commands"""
+    
+    is_user_admin = await is_admin(0, 0, message.from_user.id)
+    
+    if is_user_admin:
+        help_text = (
+            "<blockquote expandable>📚 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝘾𝙤𝙢𝙢𝙖𝙣𝙙𝙨</blockquote>\n\n"
+            "<b>👑 Admin Commands:</b>\n\n"
+            "<b>➤ /addpremium</b> <code>user_id duration</code>\n"
+            "<i>Add premium to a user</i>\n\n"
+            "<b>➤ /addpremiumlist</b> <code>id1,id2,id3 duration</code>\n"
+            "<i>Add premium to multiple users</i>\n\n"
+            "<b>➤ /extendpremium</b> <code>user_id duration</code>\n"
+            "<i>Extend existing premium</i>\n\n"
+            "<b>➤ /removepremium</b> <code>user_id</code>\n"
+            "<i>Remove premium from user</i>\n\n"
+            "<b>➤ /checkpremium</b> <code>[user_id]</code>\n"
+            "<i>Check premium status</i>\n\n"
+            "<b>➤ /searchpremium</b> <code>user_id</code>\n"
+            "<i>Search and manage premium user</i>\n\n"
+            "<b>➤ /listpremium</b>\n"
+            "<i>View all premium users</i>\n\n"
+            "<b>➤ /premstats</b>\n"
+            "<i>View premium statistics</i>\n\n"
+            "<b>➤ /premiumhistory</b>\n"
+            "<i>View recent additions</i>\n\n"
+            "<b>➤ /exportpremium</b>\n"
+            "<i>Export data to file</i>\n\n"
+            "<b>👤 User Commands:</b>\n\n"
+            "<b>➤ /mypremium</b>\n"
+            "<i>Check your premium status</i>\n\n"
+            "<b>⏰ Duration Formats:</b>\n"
+            "<code>30s</code> = 30 seconds\n"
+            "<code>5m</code> = 5 minutes\n"
+            "<code>2h</code> = 2 hours\n"
+            "<code>7d</code> = 7 days\n"
+            "<code>3w</code> = 3 weeks\n"
+            "<code>2mo</code> = 2 months\n"
+            "<code>1y</code> = 1 year"
+        )
+    else:
+        help_text = (
+            "<blockquote expandable>📚 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝘾𝙤𝙢𝙢𝙖𝙣𝙙𝙨</blockquote>\n\n"
+            "<b>👤 Available Commands:</b>\n\n"
+            "<b>➤ /mypremium</b>\n"
+            "<i>Check your premium status</i>\n\n"
+            "<b>💎 Premium Benefits:</b>\n"
+            "• 🚫 No ads or verification\n"
+            "• ⚡ Direct download links\n"
+            "• 🎯 Priority support\n"
+            "• 🔓 Unlimited access\n\n"
+            "<i>Contact admin to get premium!</i>"
+        )
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💎 Get Premium", callback_data="prem")],
+        [InlineKeyboardButton("❌ Close", callback_data="close")]
+    ])
+    
+    await message.reply_text(help_text, reply_markup=keyboard)
+
+
+# ==================== Startup Hook ====================
+
+async def initialize_premium_system():
+    """Initialize premium system on bot startup"""
+    try:
+        logging.info("🔧 Initializing Premium System...")
+        
+        # Verify database connection
+        premium_set = await PremiumManager._get_premium_set()
+        user_count = len(premium_set)
+        
+        logging.info(f"✅ Premium System Initialized - {user_count} active users")
+        
+        # Start monitoring tasks
+        start_premium_monitors()
+        
+        logging.info("✅ Premium monitors started successfully")
+        
+    except Exception as e:
+        logging.error(f"❌ Failed to initialize premium system: {e}")
+
+
+# ==================== Export Functions ====================
+
+__all__ = [
+    'PremiumManager',
+    'is_premium_user',
+    'start_premium_monitors',
+    'initialize_premium_system',
+    'prem'
+]
+
+
+# ==================== Auto-Initialize on Import ====================
+# Uncomment the line below to auto-start monitors when module is imported
+# asyncio.create_task(initialize_premium_system())
