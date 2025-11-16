@@ -9,6 +9,133 @@ from pyrogram.enums import ParseMode, ChatAction
 from helper_func import is_admin
 
 # ==================== Helper Classes ====================
+async def send_premium_tutorial(message: Message, error: str = None) -> None:
+    """
+    Send premium command usage tutorial
+    
+    Args:
+        message: The message object to reply to
+        error: Optional error message to display
+    """
+    
+    error_text = ""
+    if error:
+        error_text = f"<blockquote expandable>❌ 𝙀𝙧𝙧𝙤𝙧</blockquote>\n\n<b>⚠️ {error}</b>\n\n"
+    
+    tutorial_text = (
+        f"{error_text}"
+        f"<blockquote expandable>📚 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝘾𝙤𝙢𝙢𝙖𝙣𝙙 𝙂𝙪𝙞𝙙𝙚</blockquote>\n\n"
+        f"<b>🔧 Command Format:</b>\n"
+        f"<code>/addpremium [user_id] [duration]</code>\n\n"
+        f"<b>⏰ Duration Format:</b>\n"
+        f"• <code>30s</code> - 30 seconds\n"
+        f"• <code>5m</code> - 5 minutes\n"
+        f"• <code>2h</code> - 2 hours\n"
+        f"• <code>7d</code> - 7 days\n"
+        f"• <code>3w</code> - 3 weeks\n"
+        f"• <code>2mo</code> - 2 months\n"
+        f"• <code>1y</code> - 1 year\n\n"
+        f"<b>💡 Examples:</b>\n"
+        f"<code>/addpremium 123456789 1mo</code>\n"
+        f"<i>→ Adds 1 month premium</i>\n\n"
+        f"<code>/addpremium 987654321 7d</code>\n"
+        f"<i>→ Adds 7 days premium</i>\n\n"
+        f"<code>/addpremium 555555555 1y</code>\n"
+        f"<i>→ Adds 1 year premium</i>\n\n"
+        f"<b>📋 Available Time Units:</b>\n"
+        f"• <code>s</code> = Seconds\n"
+        f"• <code>m</code> = Minutes\n"
+        f"• <code>h</code> = Hours\n"
+        f"• <code>d</code> = Days\n"
+        f"• <code>w</code> = Weeks\n"
+        f"• <code>mo</code> = Months\n"
+        f"• <code>y</code> = Years\n\n"
+        f"<blockquote expandable><i>⚡ Quick Tip: You can combine numbers with units for precise control!</i></blockquote>"
+    )
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💎 View Premium Info", callback_data="prem")],
+        [InlineKeyboardButton("❌ Close", callback_data="close")]
+    ])
+    
+    await message.reply_text(
+        tutorial_text,
+        reply_markup=keyboard,
+        disable_web_page_preview=True
+    )
+    
+  
+def parse_duration(duration_str: str) -> int:
+    """
+    Parse duration string and return seconds
+    
+    Supports: s (seconds), m (minutes), h (hours), d (days), w (weeks), mo (months), y (years)
+    
+    Args:
+        duration_str: Duration string (e.g., "30d", "2mo", "1y")
+    
+    Returns:
+        int: Duration in seconds, or None if invalid
+    """
+    import re
+    
+    # Pattern to match number followed by time unit
+    pattern = r'^(\d+)(s|m|h|d|w|mo|y)$'
+    match = re.match(pattern, duration_str.lower())
+    
+    if not match:
+        return None
+    
+    amount = int(match.group(1))
+    unit = match.group(2)
+    
+    # Convert to seconds
+    conversions = {
+        's': 1,                    # seconds
+        'm': 60,                   # minutes
+        'h': 3600,                 # hours
+        'd': 86400,                # days
+        'w': 604800,               # weeks
+        'mo': 2592000,             # months (30 days)
+        'y': 31536000              # years (365 days)
+    }
+    
+    return amount * conversions.get(unit, 0)
+
+
+def format_duration_display(seconds: int) -> str:
+    """
+    Format seconds into human-readable duration
+    
+    Args:
+        seconds: Duration in seconds
+    
+    Returns:
+        str: Formatted duration string
+    """
+    if seconds < 60:
+        return f"{seconds} second{'s' if seconds != 1 else ''}"
+    elif seconds < 3600:
+        minutes = seconds // 60
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    elif seconds < 86400:
+        hours = seconds // 3600
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    elif seconds < 604800:
+        days = seconds // 86400
+        return f"{days} day{'s' if days != 1 else ''}"
+    elif seconds < 2592000:
+        weeks = seconds // 604800
+        return f"{weeks} week{'s' if weeks != 1 else ''}"
+    elif seconds < 31536000:
+        months = seconds // 2592000
+        return f"{months} month{'s' if months != 1 else ''}"
+    else:
+        years = seconds // 31536000
+        months = (seconds % 31536000) // 2592000
+        if months > 0:
+            return f"{years} year{'s' if years != 1 else ''} {months} month{'s' if months != 1 else ''}"
+        return f"{years} year{'s' if years != 1 else ''}"
 
 class PremiumManager:
     """Centralized premium management system"""
