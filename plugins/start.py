@@ -334,7 +334,7 @@ async def start_command(client: Client, message: Message):
 
     # Check if user needs verification (24-hour mode)
     if mode == "24" and not session_valid:
-        await handle_session_expired(client, message, user_id)
+        await handle_session_expired(client, message, user_id, decoded_string)
         return
 
     # Process the file request
@@ -391,9 +391,41 @@ async def handle_token_verification(client: Client, message: Message, user_id: i
         await AccessManager.grant_temporary_access(user_id, int(token_time))
         await TokenManager.invalidate_token(user_id)
 
+        # Try to get pending request (the encoded payload) and clear it
+        pending_encoded = await kingdb.get_variable(f"pending_req_{user_id}")
+        if pending_encoded:
+            # Build file URL: we used "verify_" prefix elsewhere, so follow that pattern
+            file_start_param = f"verify_{pending_encoded}"
+            file_url = f"https://t.me/{client.me.username}?start={file_start_param}"
+            # Optionally create a shortlink for the file URL
+            try:
+                short_file_url = await ShortlinkManager.create_shortlink(file_url)
+            except Exception:
+                short_file_url = file_url
+
+            # Clear the pending value so the link can be used only once (optional)
+            try:
+                await kingdb.set_variable(f"pending_req_{user_id}", None)
+            except Exception:
+                logging.exception("Could not clear pending_req_%s", user_id)
+
+            # Send success message with button to get file
+            duration_str = AccessManager.format_time_duration(int(token_time))
+            await message.reply_text(
+                f"✅ <b>VERIFICATION SUCCESSFUL</b>\n\n"
+                f"🎉 You now have access for the next <b>{duration_str}</b>!\n\n"
+                f"⬇️ Click below to get your requested file:",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🚀 GET FILE 🚀", url=short_file_url)],
+                    [InlineKeyboardButton("💎 Get Premium", callback_data="prem")]
+                ])
+            )
+            return
+
+        # No pending request: fallback to previous message
         duration_str = AccessManager.format_time_duration(int(token_time))
         await message.reply_text(
-            f"✅ <b>𝐕𝐄𝐑𝐈𝐅𝐈𝐂𝐀𝐓𝐈𝐎𝐍 𝐒𝐔𝐂𝐂𝐄𝐒𝐒𝐅𝐔𝐋</b>\n\n"
+            f"✅ <b>VERIFICATION SUCCESSFUL</b>\n\n"
             f"🎉 You now have access for the next <b>{duration_str}</b>!\n\n"
             f"💡 <i>Want unlimited access? Get premium!</i>",
             reply_markup=InlineKeyboardMarkup([
@@ -404,8 +436,8 @@ async def handle_token_verification(client: Client, message: Message, user_id: i
         await message.reply_text("❌ <b>Invalid or expired verification token.</b>")
 
 
-async def handle_session_expired(client: Client, message: Message, user_id: int):
-    """Handle expired session by generating verification link"""
+async def handle_session_expired(client: Client, message: Message, user_id: int, decoded_string: str):
+    """Handle expired session by generating verification link and storing pending request"""
     token_time = await kingdb.get_variable("token_time") or Config.TOKEN_TIME
     duration_str = AccessManager.format_time_duration(int(token_time))
 
@@ -413,10 +445,22 @@ async def handle_session_expired(client: Client, message: Message, user_id: int)
     token = await TokenManager.generate_verification_token(user_id)
     verification_url = f"https://t.me/{client.me.username}?start={token}"
 
-    # Create shortlink
+    # Create shortlink for verification link
     short_url = await ShortlinkManager.create_shortlink(verification_url)
 
-    # Build and send message
+    # Save the pending requested payload (encoded) so we can offer a button after verification
+    try:
+        # We want a link the user can click after verification that triggers the original file request.
+        # We'll encode the original request with 'set-' prefix so it matches your link-mode parsing:
+        pending_encoded = await encode(f"set-{decoded_string}")
+        # Store it in DB for this user
+        await kingdb.set_variable(f"pending_req_{user_id}", pending_encoded)
+    except Exception as e:
+        # If encoding or DB fails, still proceed but log
+        logging.exception("Failed to store pending request for user %s: %s", user_id, e)
+        pending_encoded = None
+
+    # Build and send message with verification button
     message_text = MessageBuilder.build_session_expired_message(duration_str)
     keyboard = MessageBuilder.build_verification_keyboard(short_url)
 
