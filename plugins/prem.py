@@ -562,7 +562,7 @@ async def list_premium_command(client: Client, message: Message):
     try:
         # Get all premium users
         premium_users = await PremiumManager.get_all_premium_users()
-    
+        logger.info(premium_users)
         # Build and send list
         list_msg, keyboard = PremiumMessageBuilder.build_list_message(premium_users)
         await message.reply_text(list_msg, reply_markup=keyboard)
