@@ -1,7 +1,7 @@
-
 import os
 import sys
 import random
+import logging
 import asyncio
 import subprocess
 from bot import Bot
@@ -18,6 +18,9 @@ from helper_func import (
     banUser, is_userJoin, is_admin, subscribed, encode, decode,
     get_messages, generate_hash, get_shortlink
 )
+
+# Import premium system
+from plugins.prem import PremiumManager
 
 # ==================== Configuration ====================
 class Config:
@@ -52,10 +55,12 @@ class AccessManager:
 
     @staticmethod
     async def is_premium_user(user_id: int) -> bool:
-        """Check if user has premium access"""
+        """Check if user has premium access using the new PremiumManager"""
         try:
-            return await kingdb.is_premium(user_id)
-        except:
+            status = await PremiumManager.check_premium(user_id)
+            return status.get("is_premium", False)
+        except Exception as e:
+            print(f"Error checking premium status: {e}")
             return False
 
     @staticmethod
@@ -142,15 +147,19 @@ class MessageBuilder:
         ])
 
     @staticmethod
-    def build_download_keyboard(link: str, show_close: bool = True) -> InlineKeyboardMarkup:
+    def build_download_keyboard(link: str, show_close: bool = True, is_premium: bool = False) -> InlineKeyboardMarkup:
         """Build keyboard for download"""
         buttons = [[InlineKeyboardButton("🚀 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃 🚀", url=link)]]
 
         if show_close:
-            buttons.append([
-                InlineKeyboardButton("💎 𝙿𝚁𝙴𝙼𝙸𝚄𝙼 ", callback_data="prem"),
-                InlineKeyboardButton("❌ 𝙲𝙻𝙾𝚂𝙴", callback_data="close")
-            ])
+            if is_premium:
+                # Premium users don't see "Get Premium" button
+                buttons.append([InlineKeyboardButton("❌ 𝙲𝙻𝙾𝚂𝙴", callback_data="close")])
+            else:
+                buttons.append([
+                    InlineKeyboardButton("💎 𝙿𝚁𝙴𝙼𝙸𝚄𝙼 ", callback_data="prem"),
+                    InlineKeyboardButton("❌ 𝙲𝙻𝙾𝚂𝙴", callback_data="close")
+                ])
 
         return InlineKeyboardMarkup(buttons)
 
@@ -227,13 +236,20 @@ async def start_command(client: Client, message: Message):
     if not mode:
         mode = Config.VERIFICATION_MODE  # Fallback to default
 
+    # Check premium status FIRST using new PremiumManager
+    is_premium = await AccessManager.is_premium_user(user_id)
+
+    # Premium users bypass ALL verification
+    if is_premium:
+        await process_file_request(client, message, user_id, argument, mode == "link", is_premium=True)
+        return
+
     # Skip verification if mode is "off"
     if mode == "off":
         await process_file_request(client, message, user_id, argument)
         return
 
-    # Check premium status and session validity
-    is_premium = await AccessManager.is_premium_user(user_id)
+    # Check session validity for non-premium users
     session_valid, _ = await AccessManager.check_session_validity(user_id)
 
     # Handle different modes
@@ -243,7 +259,7 @@ async def start_command(client: Client, message: Message):
         return
 
     # Check if user needs verification (24-hour mode)
-    if mode == "24" and not is_premium and not session_valid:
+    if mode == "24" and not session_valid:
         await handle_session_expired(client, message, user_id)
         return
 
@@ -253,12 +269,26 @@ async def start_command(client: Client, message: Message):
 
 async def send_welcome_message(client: Client, message: Message):
     """Send welcome message to user"""
-    reply_markup = InlineKeyboardMarkup([
+    user_id = message.from_user.id
+    
+    # Check if user is premium
+    is_premium = await AccessManager.is_premium_user(user_id)
+    
+    # Build buttons
+    buttons = [
         [
             InlineKeyboardButton('🤖 Aʙᴏᴜᴛ ᴍᴇ', callback_data='about'),
             InlineKeyboardButton('Sᴇᴛᴛɪɴɢs ⚙️', callback_data='setting')
         ]
-    ])
+    ]
+    
+    # Add premium status button
+    if is_premium:
+        buttons.append([InlineKeyboardButton('💎 Pʀᴇᴍɪᴜᴍ Sᴛᴀᴛᴜs', callback_data='my_premium_status')])
+    else:
+        buttons.append([InlineKeyboardButton('💎 Gᴇᴛ Pʀᴇᴍɪᴜᴍ', callback_data='prem')])
+    
+    reply_markup = InlineKeyboardMarkup(buttons)
 
     await message.reply_photo(
         photo=random.choice(PICS),
@@ -292,7 +322,11 @@ async def handle_token_verification(client: Client, message: Message, user_id: i
         duration_str = AccessManager.format_time_duration(int(token_time))
         await message.reply_text(
             f"✅ <b>𝐕𝐄𝐑𝐈𝐅𝐈𝐂𝐀𝐓𝐈𝐎𝐍 𝐒𝐔𝐂𝐂𝐄𝐒𝐒𝐅𝐔𝐋</b>\n\n"
-            f"🎉 You now have access for the next <b>{duration_str}</b>!"
+            f"🎉 You now have access for the next <b>{duration_str}</b>!\n\n"
+            f"💡 <i>Want unlimited access? Get premium!</i>",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💎 Get Premium", callback_data="prem")]
+            ])
         )
     else:
         await message.reply_text("❌ <b>Invalid or expired verification token.</b>")
@@ -326,8 +360,12 @@ async def handle_link_mode(client: Client, message: Message, user_id: int, decod
     # Premium users get direct link
     if is_premium:
         await message.reply_text(
-            f"💎 <b>Premium Direct Link:</b>\n\n<code>{file_url}</code>\n\n"
-            f"<i>Tap to copy the link!</i>"
+            f"<blockquote expandable>💎 𝙋𝙧𝙚𝙢𝙞𝙪𝙢 𝘿𝙞𝙧𝙚𝙘𝙩 𝙇𝙞𝙣𝙠</blockquote>\n\n"
+            f"<code>{file_url}</code>\n\n"
+            f"<i>✨ Tap to copy the link!</i>",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ 𝙲𝙻𝙾𝚂𝙴", callback_data="close")]
+            ])
         )
         return
 
@@ -335,12 +373,12 @@ async def handle_link_mode(client: Client, message: Message, user_id: int, decod
     short_url = await ShortlinkManager.create_shortlink(file_url)
 
     message_text = "<blockquote expandable>🧩 Here is your download link 👇</blockquote>"
-    keyboard = MessageBuilder.build_download_keyboard(short_url)
+    keyboard = MessageBuilder.build_download_keyboard(short_url, is_premium=False)
 
     await message.reply_text(text=message_text, reply_markup=keyboard)
 
 
-async def process_file_request(client: Client, message: Message, user_id: int, argument: list, link_mode: bool = False):
+async def process_file_request(client: Client, message: Message, user_id: int, argument: list, link_mode: bool = False, is_premium: bool = False):
     """Process and send requested files to user"""
     await message.delete()
 
@@ -368,6 +406,10 @@ async def process_file_request(client: Client, message: Message, user_id: int, a
         kingdb.get_protect_content()
     )
 
+    # Premium users don't get auto-delete
+    if is_premium:
+        AUTO_DEL = False
+
     if CHNL_BTN:
         button_name, button_link = await kingdb.get_channel_button_link()
 
@@ -385,6 +427,10 @@ async def process_file_request(client: Client, message: Message, user_id: int, a
             caption = ""
         else:
             caption = "" if not msg.caption else msg.caption.html
+
+        # Add premium badge to caption if user is premium
+        if is_premium and caption:
+            caption = f"💎 <b>Premium User</b>\n\n{caption}"
 
         # Handle reply markup
         if CHNL_BTN:
@@ -428,12 +474,11 @@ async def process_file_request(client: Client, message: Message, user_id: int, a
                 if idx == len(messages) - 1:
                     last_message = copied_msg
 
-    # Send auto-delete notification
+    # Send auto-delete notification (not for premium users)
     if AUTO_DEL and last_message:
         asyncio.create_task(
             auto_del_notification(client.username, last_message, DEL_TIMER, message.command[1])
         )
-
 
 # ==================== Force Subscribe Handler ====================
 
@@ -538,105 +583,8 @@ async def not_joined(client: Client, message: Message):
             f"<blockquote expandable><b>Rᴇᴀsᴏɴ:</b> {e}</blockquote>"
         )
 
-##===================================================================================================================##
-
-#TRIGGRED START MESSAGE FOR HANDLE FORCE SUB MESSAGE AND FORCE SUB CHANNEL IF A USER NOT JOINED A CHANNEL
-
-##===================================================================================================================##
-
-
-# Create a global dictionary to store chat data
-chat_data_cache = {}
-
-@Bot.on_message(filters.command('start') & filters.private & ~banUser)
-async def not_joined(client: Client, message: Message):
-    temp = await message.reply(f"<b>??</b>")
-
-    user_id = message.from_user.id
-
-    REQFSUB = await kingdb.get_request_forcesub()
-    buttons = []
-    count = 0
-
-    try:
-        for total, chat_id in enumerate(await kingdb.get_all_channels(), start=1):
-            await message.reply_chat_action(ChatAction.PLAYING)
-
-            # Show the join button of non-subscribed Channels.....
-            if not await is_userJoin(client, user_id, chat_id):
-                try:
-                    # Check if chat data is in cache
-                    if chat_id in chat_data_cache:
-                        data = chat_data_cache[chat_id]  # Get data from cache
-                    else:
-                        data = await client.get_chat(chat_id)  # Fetch from API
-                        chat_data_cache[chat_id] = data  # Store in cache
-
-                    cname = data.title
-
-                    # Handle private channels and links
-                    if REQFSUB and not data.username:
-                        link = await kingdb.get_stored_reqLink(chat_id)
-                        await kingdb.add_reqChannel(chat_id)
-
-                        if not link:
-                            link = (await client.create_chat_invite_link(chat_id=chat_id, creates_join_request=True)).invite_link
-                            await kingdb.store_reqLink(chat_id, link)
-                    else:
-                        link = data.invite_link
-
-                    # Add button for the chat
-                    buttons.append([InlineKeyboardButton(text=cname, url=link)])
-                    count += 1
-                    await temp.edit(f"<b>{'! ' * count}</b>")
-
-                except Exception as e:
-                    print(f"Can't Export Channel Name and Link..., Please Check If the Bot is admin in the FORCE SUB CHANNELS:\nProvided Force sub Channel:- {chat_id}")
-                    return await temp.edit(f"<b><i>! Eʀʀᴏʀ, Cᴏɴᴛᴀᴄᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ ᴛᴏ sᴏʟᴠᴇ ᴛʜᴇ ɪssᴜᴇs @Shidoteshika1</i></b>\n<blockquote expandable><b>Rᴇᴀsᴏɴ:</b> {e}</blockquote>")
-
-        try:
-            buttons.append([InlineKeyboardButton(text='♻️ Tʀʏ Aɢᴀɪɴ', url=f"https://t.me/{client.username}?start={message.command[1]}")])
-        except IndexError:
-            pass
-
-        await message.reply_chat_action(ChatAction.CANCEL)
-        await temp.edit(
-            text=FORCE_MSG.format(
-                first=message.from_user.first_name,
-                last=message.from_user.last_name,
-                username=None if not message.from_user.username else '@' + message.from_user.username,
-                mention=message.from_user.mention,
-                id=message.from_user.id,
-                count=count,
-                total=total
-            ),
-            reply_markup=InlineKeyboardMarkup(buttons),
-        )
-
-        try: await message.delete()
-        except: pass
-
-    except Exception as e:
-        print(f"Unable to perform forcesub buttons reason : {e}")
-        return await temp.edit(f"<b><i>! Eʀʀᴏʀ, Cᴏɴᴛᴀᴄᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ ᴛᴏ sᴏʟᴠᴇ ᴛʜᴇ ɪssᴜᴇs @Shidoteshika1</i></b>\n<blockquote expandable><b>Rᴇᴀsᴏɴ:</b> {e}</blockquote>")
-
 
 #=====================================================================================##
 #......... RESTART COMMAND FOR RESTARTING BOT .......#
 #=====================================================================================##
 
-
-async def restart_bot(client: Client, message: Message):
-    print("Restarting bot...")
-    msg = await message.reply(text=f"<b><i><blockquote>⚠️ {client.name} ɢᴏɪɴɢ ᴛᴏ Rᴇsᴛᴀʀᴛ...</blockquote></i></b>")
-    try:
-        await asyncio.sleep(6)  # Wait for 6 seconds before restarting
-        await msg.delete()
-        args = [sys.executable, "main.py"]  # Adjust this if your start file is named differently
-        os.execl(sys.executable, *args)
-    except Exception as e:
-        print(f"Error occured while Restarting the bot: {e}")
-        return await msg.edit_text(f"<b><i>! Eʀʀᴏʀ, Cᴏɴᴛᴀᴄᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ ᴛᴏ sᴏʟᴠᴇ ᴛʜᴇ ɪssᴜᴇs @Shidoteshika1</i></b>\n<blockquote expandable><b>Rᴇᴀsᴏɴ:</b> {e}</blockquote>")
-    # Optionally, you can add cleanup tasks here
-    #subprocess.Popen([sys.executable, "main.py"])  # Adjust this if your start file is named differently
-    #sys.exit()
