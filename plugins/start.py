@@ -168,50 +168,81 @@ class FileRequestHandler:
     """Handles file/message ID parsing and retrieval"""
 
     @staticmethod
+    def _maybe_unwrap_token(value: int, db_channel_id: int) -> int:
+        """
+        If the token was encoded as (msgid * abs(db_channel_id)), detect and unwrap.
+        Return the possibly corrected msgid.
+        """
+        try:
+            if not db_channel_id:
+                return value
+            abs_db = abs(int(db_channel_id))
+            # If value is obviously larger than channel id and divisible, unwrap it
+            if value >= abs_db and value % abs_db == 0:
+                unwrapped = value // abs_db
+                logging.debug("Unwrapped token %s -> %s using db_channel_id %s", value, unwrapped, db_channel_id)
+                return unwrapped
+        except Exception:
+            pass
+        return value
+
+    @staticmethod
     def parse_message_ids(argument: list, db_channel_id: int, link_mode: bool = False) -> list:
         """
         Parse message IDs from arguments.
 
-        Supports payloads like:
+        Supported/recognized payload forms:
          - ["get", "<msgid>"]
          - ["get", "<start>", "<end>"]
          - ["set", "<channel_id>", "<msgid>"]
          - ["set", "<channel_id>", "<start>", "<end>"]
-         - fallback: find any integers in tokens
-        Returns list of message ids or None on failure.
+         - Tokens where msgid was encoded as msgid * abs(db_channel_id)
+         - Fallback: find any integers in tokens
+
+        Returns list of message ids (ints) or None on failure.
         """
         try:
             tokens = [str(x) for x in (argument or [])]
+            logging.debug("parse_message_ids: tokens=%s db_channel_id=%s link_mode=%s", tokens, db_channel_id, link_mode)
 
             def to_int(x):
                 return int(x)
 
             # Case: explicit "set" (set, channel, msgid[,end])
             if tokens and tokens[0].lower() == "set":
+                # tokens: ["set", "<channel>", "<msgid>"] or ["set", "<channel>", "<start>", "<end>"]
                 if len(tokens) >= 4:
-                    start = to_int(tokens[2])
-                    end = to_int(tokens[3])
+                    start_raw = to_int(tokens[2])
+                    end_raw = to_int(tokens[3])
+                    start = FileRequestHandler._maybe_unwrap_token(start_raw, db_channel_id)
+                    end = FileRequestHandler._maybe_unwrap_token(end_raw, db_channel_id)
                     return list(range(start, end + 1)) if start <= end else list(range(start, end - 1, -1))
                 if len(tokens) >= 3:
-                    return [to_int(tokens[2])]
+                    val = to_int(tokens[2])
+                    return [FileRequestHandler._maybe_unwrap_token(val, db_channel_id)]
                 return None
 
             # Case: explicit "get" (get, msgid[,end])
             if tokens and tokens[0].lower() == "get":
                 if len(tokens) >= 3:
-                    start = to_int(tokens[1])
-                    end = to_int(tokens[2])
+                    start_raw = to_int(tokens[1])
+                    end_raw = to_int(tokens[2])
+                    start = FileRequestHandler._maybe_unwrap_token(start_raw, db_channel_id)
+                    end = FileRequestHandler._maybe_unwrap_token(end_raw, db_channel_id)
                     return list(range(start, end + 1)) if start <= end else list(range(start, end - 1, -1))
                 if len(tokens) >= 2:
-                    return [to_int(tokens[1])]
+                    val = to_int(tokens[1])
+                    return [FileRequestHandler._maybe_unwrap_token(val, db_channel_id)]
                 return None
 
-            # If link_mode, try to extract any integers from tokens
+            # If link_mode, try to extract any integers from tokens and unwrap if needed
             if link_mode:
                 ints = []
                 for t in tokens:
                     try:
-                        ints.append(int(t))
+                        i = int(t)
+                        i = FileRequestHandler._maybe_unwrap_token(i, db_channel_id)
+                        ints.append(i)
                     except Exception:
                         continue
                 if not ints:
@@ -222,10 +253,11 @@ class FileRequestHandler:
 
             # Fallback: common case where argument is like ["something", "<msgid>"]
             if len(tokens) >= 2:
-                return [to_int(tokens[1])]
+                val = to_int(tokens[1])
+                return [FileRequestHandler._maybe_unwrap_token(val, db_channel_id)]
 
-        except (ValueError, IndexError, ZeroDivisionError):
-            pass
+        except (ValueError, IndexError, ZeroDivisionError) as e:
+            logging.debug("parse_message_ids exception: %s", e)
 
         return None
 
