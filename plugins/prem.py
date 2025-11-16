@@ -257,7 +257,7 @@ async def add_premium_command(client: Client, message: Message):
     await message.reply_chat_action(ChatAction.TYPING)
 
     # Check if user is admin
-    if not await is_admin(message.from_user.id):
+    if not await is_admin(0, 0, 0, message.from_user.id):
         return await message.reply_text(
             "<blockquote expandable>⛔ 𝘼𝙘𝙘𝙚𝙨𝙨 𝘿𝙚𝙣𝙞𝙚𝙙</blockquote>\n\n"
             "❌ <i>Only admins can use this command</i>"
